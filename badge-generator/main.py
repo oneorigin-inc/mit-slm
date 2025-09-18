@@ -14,7 +14,22 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
-# Text preprocessing (optional - install with: pip install nltk)
+
+# CONFIGURATION
+MODEL_CONFIG = {
+    "model_name": "phi4-chat:latest",
+    "temperature": 0.15,
+    "top_p": 0.8,
+    "top_k": 30,
+    "num_predict": 400,
+    "repeat_penalty": 1.05,
+    "num_ctx": 4096,
+    "stop": ["<|end|>", "}\n\n"]
+}
+
+OLLAMA_API = "http://localhost:11434/api/generate"
+
+# Text preprocessing
 try:
     import nltk
     from nltk.corpus import stopwords
@@ -49,8 +64,8 @@ except Exception as e:
 app = FastAPI()
 logger = logging.getLogger("uvicorn.error")
 
-# ICONS DATA 
-ICONS_DATA = [
+# ICONS DATA
+ICONS_DATA =  [
     {
       "name": "atom.png",
       "display_name": "Atom",
@@ -558,19 +573,6 @@ ICONS_DATA = [
   ]
 
 
-# CONFIGURATION
-MODEL_CONFIG = {
-    "model_name": "phi4-chat:latest",
-    "temperature": 0.15,  # Lower for consistent JSON
-    "top_p": 0.8,
-    "top_k": 30,
-    "num_predict": 400,   # Reduced for faster generation
-    "repeat_penalty": 1.05,
-    "num_ctx": 4096,
-    "stop": ["<|end|>", "}\n\n"]
-}
-OLLAMA_API = "http://localhost:11434/api/generate"
-
 STYLE_DESCRIPTIONS = {
     "Professional": "Use formal, business-oriented language emphasizing industry standards and career advancement.",
     "Academic": "Use scholarly language emphasizing learning outcomes and academic rigor.",
@@ -604,7 +606,6 @@ badge_history: List[Dict[str, Any]] = []
 
 # HELPER FUNCTIONS
 def preprocess_text(text: str) -> str:
-    """Enhanced text preprocessing for better similarity matching."""
     if not text:
         return ""
     
@@ -629,7 +630,6 @@ def preprocess_text(text: str) -> str:
     return ' '.join(filtered_words)
 
 def build_weighted_badge_text(badge_name: str, badge_desc: str, custom_instructions: str) -> str:
-    """Combine badge text with weighted importance."""
     name_processed = preprocess_text(badge_name)
     desc_processed = preprocess_text(badge_desc)
     custom_processed = preprocess_text(custom_instructions)
@@ -637,18 +637,17 @@ def build_weighted_badge_text(badge_name: str, badge_desc: str, custom_instructi
     weighted_components = []
     
     if name_processed:
-        weighted_components.extend([name_processed] * 2)  # 2x weight
+        weighted_components.extend([name_processed] * 2)
     
     if desc_processed:
-        weighted_components.append(desc_processed)  # 1x weight
+        weighted_components.append(desc_processed)
     
     if custom_processed:
-        weighted_components.extend([custom_processed] * 2)  # 2x weight
+        weighted_components.extend([custom_processed] * 2)
     
     return ' '.join(weighted_components)
 
 def build_icon_text(icon: Dict[str, Any]) -> str:
-    """Build comprehensive text representation of an icon for TF-IDF matching."""
     components = []
     
     if icon.get("display_name"):
@@ -667,7 +666,7 @@ def build_icon_text(icon: Dict[str, Any]) -> str:
     keywords = icon.get("keywords", [])
     if keywords:
         components.extend(keywords)
-        components.extend(keywords)  # Double weight for keywords
+        components.extend(keywords)
     
     use_cases = icon.get("use_cases", [])
     if use_cases:
@@ -677,7 +676,6 @@ def build_icon_text(icon: Dict[str, Any]) -> str:
     return preprocess_text(full_text)
 
 def build_chat_prompt(request) -> str:
-    """Build chat-formatted prompt for Phi-4-mini-instruct."""
     style_instruction = STYLE_DESCRIPTIONS.get(request.badge_style, STYLE_DESCRIPTIONS["Professional"])
     tone_instruction = TONE_DESCRIPTIONS.get(request.badge_tone, TONE_DESCRIPTIONS["Authoritative"])
     level_instruction = LEVEL_DESCRIPTIONS.get(request.badge_level, LEVEL_DESCRIPTIONS["Intermediate"]) if request.badge_level else ""
@@ -693,7 +691,6 @@ Tone: {tone_instruction}"""
     if level_instruction:
         user_content += f"\nLevel: {level_instruction}"
 
-    # Badge description instructions (includes institution)
     desc_instructions = "Badge description should cover: competencies mastered, technical tools, real-world applications, assessment rigor, employer value, transferable skills."
     
     if request.institution:
@@ -707,56 +704,56 @@ Tone: {tone_instruction}"""
     
     user_content += f"\n\n{desc_instructions}"
 
-    # Criteria instructions (competency-focused only)
     criteria_instructions = f"Criteria narrative should focus ONLY on competencies and learning requirements: completion requirements, learning outcomes, assessment methods, practical experiences, technical proficiencies, soft skills developed, evidence standards, validation processes. Template: {criterion_instruction}"
     
     user_content += f"\n\n{criteria_instructions}"
 
     return f"<|system|>{system_msg}<|end|>\n<|user|>{user_content}<|end|>\n<|assistant|>"
 
+def find_balanced_json(text: str) -> Optional[str]:
+    start = text.find('{')
+    if start == -1:
+        return None
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == '{':
+            depth += 1
+        elif text[i] == '}':
+            depth -= 1
+            if depth == 0:
+                return text[start:i+1]
+    return None
+
 def extract_json_from_text(text: str) -> dict:
-    """Extract JSON object from model response text."""
     if not text:
         raise ValueError("Empty model response")
     
     s = text.strip()
     
-    # Try direct JSON parsing first
     try:
         return json.loads(s)
     except json.JSONDecodeError:
         pass
 
-    # Find balanced JSON
-    start = s.find('{')
-    if start == -1:
-        raise ValueError("No JSON object found")
-    
-    depth = 0
-    for i in range(start, len(s)):
-        if s[i] == '{':
-            depth += 1
-        elif s[i] == '}':
-            depth -= 1
-            if depth == 0:
-                try:
-                    return json.loads(s[start:i+1])
-                except json.JSONDecodeError:
-                    pass
+    candidate = find_balanced_json(s)
+    if candidate:
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
 
-    # Try extracting between first { and last }
     first = s.find('{')
     last = s.rfind('}')
     if first != -1 and last != -1 and last > first:
+        sub = s[first:last+1]
         try:
-            return json.loads(s[first:last+1])
+            return json.loads(sub)
         except json.JSONDecodeError:
             pass
 
     raise ValueError("No valid JSON found in model response")
 
 async def call_model_async(prompt: str, timeout_s: float = 120.0) -> str:
-    """Call model with chat format."""
     payload = {
         "model": MODEL_CONFIG["model_name"],
         "prompt": prompt,
@@ -780,7 +777,6 @@ async def call_model_async(prompt: str, timeout_s: float = 120.0) -> str:
         return resp.json().get("response", "")
 
 async def generate_badge_metadata_async(request) -> dict:
-    """Generate badge metadata using chat format."""
     prompt = build_chat_prompt(request)
     text = await call_model_async(prompt)
     badge_json = extract_json_from_text(text)
@@ -791,7 +787,6 @@ async def generate_badge_metadata_async(request) -> dict:
     return badge_json
 
 async def get_icon_suggestions_for_badge(badge_name: str, badge_description: str, custom_instructions: str = "", top_k: int = 3):
-    """Generate icon suggestions for a badge based on its metadata."""
     try:
         badge_text = build_weighted_badge_text(badge_name, badge_description, custom_instructions)
         candidates = icon_matcher.suggest_icons(badge_text, top_k=top_k)
@@ -825,7 +820,31 @@ async def get_icon_suggestions_for_badge(badge_name: str, badge_description: str
             "icon_candidates": []
         }
 
-# CLASSES
+async def generate_badge_with_image_text(badge_name: str, badge_description: str, institution: str = "") -> dict:
+    prompt = f"""<|system|>Generate optimized text for badge image. Return JSON: {{"short_title": "string", "brief_description": "string", "institution_display": "string", "achievement_phrase": "string"}}<|end|>
+<|user|>Optimize for badge image:
+Badge: "{badge_name}"
+Description: "{badge_description}" 
+Institution: "{institution}"
+
+Requirements:
+- Short title: max 25 characters
+- Brief description: 1-2 lines, key achievement
+- Institution display: shortened name
+- Achievement phrase: motivational 3-4 words<|end|>
+<|assistant|>"""
+
+    try:
+        response = await call_model_async(prompt, timeout_s=30)
+        return extract_json_from_text(response)
+    except Exception as e:
+        return {
+            "short_title": badge_name[:25],
+            "brief_description": "Achievement Unlocked",
+            "institution_display": institution[:20] if institution else "",
+            "achievement_phrase": "Excellence Achieved"
+        }
+
 class IconMatcher:
     def __init__(self, icons_data: List[Dict[str, Any]]):
         self.icons_data = icons_data
@@ -835,7 +854,6 @@ class IconMatcher:
         self._build_tfidf_system()
     
     def _build_tfidf_system(self):
-        """Build TF-IDF vectorizer and precompute icon matrix."""
         if not self.icons_data:
             logger.warning("No icons data provided for TF-IDF system")
             return
@@ -860,7 +878,6 @@ class IconMatcher:
             )
             
             self.icon_tfidf_matrix = self.vectorizer.fit_transform(self.icon_texts)
-            
             logger.info(f"TF-IDF system initialized with {len(self.icons_data)} icons")
             
         except Exception as e:
@@ -869,7 +886,6 @@ class IconMatcher:
             self.icon_tfidf_matrix = None
     
     def suggest_icons(self, badge_text: str, top_k: int = 3) -> List[Dict[str, Any]]:
-        """Suggest icons based on badge text similarity."""
         if not badge_text or not self.vectorizer or self.icon_tfidf_matrix is None:
             if self.icons_data:
                 return [{"icon": self.icons_data[0], "score": 0.0}]
@@ -903,7 +919,6 @@ class IconMatcher:
             return []
     
     def _apply_keyword_boost(self, badge_text: str, similarities: np.ndarray) -> np.ndarray:
-        """Apply keyword matching boost to similarity scores."""
         try:
             badge_words = set(badge_text.lower().split())
             
@@ -929,7 +944,6 @@ class IconMatcher:
             logger.warning(f"Keyword boost failed: {e}")
             return similarities
 
-# PYDANTIC MODELS
 class BadgeRequest(BaseModel):
     course_input: str
     badge_style: str = "Professional"
@@ -946,19 +960,14 @@ class BadgeValidated(BaseModel):
     criteria: Dict[str, Any] = Field(default_factory=dict)
     raw_model_output: str = Field("", alias="raw_model_output")
 
-# Initialize global icon matcher
 icon_matcher = IconMatcher(ICONS_DATA)
 
-# API ENDPOINTS
 @app.post("/generate_badge")
 async def generate_badge(request: BadgeRequest):
-    """Generate badge metadata with icon suggestions in a single API call."""
     start_time = time.time()
     try:
-        # Step 1: Generate badge JSON from model
         badge_json = await generate_badge_metadata_async(request)
 
-        # Step 2: Validate using pydantic
         try:
             validated = BadgeValidated(
                 badge_name=badge_json.get("badge_name", ""),
@@ -970,31 +979,36 @@ async def generate_badge(request: BadgeRequest):
             logger.warning("Badge validation failed: %s", ve)
             raise HTTPException(status_code=502, detail=f"Badge schema validation error: {ve}")
 
-        # Step 3: Get icon suggestions
         icon_data = await get_icon_suggestions_for_badge(
             badge_name=validated.badge_name,
             badge_description=validated.badge_description,
-            custom_instructions=request.custom_instructions,
+            custom_instructions=request.custom_instructions or "",
             top_k=3
+        )
+
+        image_text = await generate_badge_with_image_text(
+            validated.badge_name,
+            validated.badge_description,
+            request.institution or ""
         )
 
         generation_time = time.time() - start_time
         
-        # Step 4: Build complete response
         result = {
             "badge_name": validated.badge_name,
             "badge_description": validated.badge_description,
             "criteria": validated.criteria,
-            "suggested_icon": icon_data["suggested_icon"]
+            "suggested_icon": icon_data["suggested_icon"],
+            "image_text": image_text
         }
 
-        # Step 5: Store in history
         history_entry = {
             "id": len(badge_history) + 1,
             "timestamp": datetime.now().isoformat(),
             "course_input": (request.course_input[:100] + "...") if len(request.course_input) > 100 else request.course_input,
             "badge_style": request.badge_style,
             "badge_tone": request.badge_tone,
+            "criterion_style": request.criterion_style,
             "custom_instructions": request.custom_instructions,
             "badge_level": request.badge_level,
             "institution": request.institution,
