@@ -8,7 +8,6 @@ import time
 from datetime import datetime
 import logging
 import re
-import string
 
 # TF-IDF & cosine similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -22,28 +21,36 @@ try:
     from nltk.stem import PorterStemmer
     from nltk.tokenize import word_tokenize
     
-    # Download required NLTK data (run once)
-    try:
-        nltk.data.find('tokenizers/punkt')
-        nltk.data.find('corpora/stopwords')
-    except LookupError:
-        nltk.download('punkt', quiet=True)
-        nltk.download('stopwords', quiet=True)
+    # Download required NLTK data (run once) - Updated for newer NLTK versions
+    required_downloads = ['punkt', 'stopwords']
+    
+    for resource in required_downloads:
+        try:
+            nltk.data.find(f'tokenizers/{resource}' if 'punkt' in resource else f'corpora/{resource}')
+        except LookupError:
+            print(f"Downloading NLTK resource: {resource}")
+            nltk.download(resource, quiet=True)
     
     NLTK_AVAILABLE = True
     STOP_WORDS = set(stopwords.words('english'))
     STEMMER = PorterStemmer()
+    print(" NLTK initialized successfully")
+    
 except ImportError:
+    NLTK_AVAILABLE = False
+    STOP_WORDS = set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should'])
+    print("  NLTK not available, using basic preprocessing")
+
+except Exception as e:
+    print(f"  NLTK setup failed: {e}, using basic preprocessing")
     NLTK_AVAILABLE = False
     STOP_WORDS = set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should'])
 
 app = FastAPI()
 logger = logging.getLogger("uvicorn.error")
 
-# -------------------------
-# ICONS_DATA
-# -------------------------
-ICONS_DATA =  [
+# ICONS DATA 
+ICONS_DATA = [
     {
       "name": "atom.png",
       "display_name": "Atom",
@@ -551,15 +558,13 @@ ICONS_DATA =  [
   ]
 
 
-# -------------------------
 # CONFIGURATION
-# -------------------------
 MODEL_CONFIG = {
-    "model_name": "phi-4-ob:latest",
-    "temperature": 0.2,
+    "model_name": "phi4-chat:latest",
+    "temperature": 0.15,  # Lower for consistent JSON
     "top_p": 0.8,
     "top_k": 30,
-    "num_predict": 600,
+    "num_predict": 400,   # Reduced for faster generation
     "repeat_penalty": 1.05,
     "num_ctx": 4096,
     "stop": ["<|end|>", "}\n\n"]
@@ -597,61 +602,38 @@ CRITERION_TEMPLATES = {
 # In-memory history
 badge_history: List[Dict[str, Any]] = []
 
-# -------------------------
 # HELPER FUNCTIONS
-# -------------------------
-
 def preprocess_text(text: str) -> str:
-    """
-    Enhanced text preprocessing for better similarity matching.
-    Uses NLTK if available, otherwise falls back to basic preprocessing.
-    """
+    """Enhanced text preprocessing for better similarity matching."""
     if not text:
         return ""
     
-    # Convert to lowercase
     text = text.lower()
-    
-    # Remove punctuation and special characters
     text = re.sub(r'[^a-zA-Z\s]', '', text)
-    
-    # Remove extra whitespace
     text = ' '.join(text.split())
     
     if NLTK_AVAILABLE:
         try:
-            # Tokenize
             tokens = word_tokenize(text)
-            
-            # Remove stopwords and apply stemming
             processed_tokens = []
             for token in tokens:
                 if token not in STOP_WORDS and len(token) > 2:
                     stemmed = STEMMER.stem(token)
                     processed_tokens.append(stemmed)
-            
             return ' '.join(processed_tokens)
         except Exception as e:
-            logger.warning(f"NLTK processing failed, using basic preprocessing: {e}")
-            # Fall back to basic preprocessing
-            pass
+            logger.warning(f"NLTK processing failed: {e}")
     
-    # Basic preprocessing fallback
     words = text.split()
     filtered_words = [word for word in words if word not in STOP_WORDS and len(word) > 2]
     return ' '.join(filtered_words)
 
 def build_weighted_badge_text(badge_name: str, badge_desc: str, custom_instructions: str) -> str:
-    """
-    Combine badge text with weighted importance.
-    Give more weight to badge_name and custom_instructions as they contain key intent.
-    """
-    # Preprocess each component
+    """Combine badge text with weighted importance."""
     name_processed = preprocess_text(badge_name)
     desc_processed = preprocess_text(badge_desc)
     custom_processed = preprocess_text(custom_instructions)
     
-    # Weight: badge_name (2x), custom_instructions (2x), description (1x)
     weighted_components = []
     
     if name_processed:
@@ -669,12 +651,10 @@ def build_icon_text(icon: Dict[str, Any]) -> str:
     """Build comprehensive text representation of an icon for TF-IDF matching."""
     components = []
     
-    # Core components
     if icon.get("display_name"):
         components.append(icon["display_name"])
     
     if icon.get("name"):
-        # Remove file extension and convert to readable text
         name_clean = icon["name"].replace('.png', '').replace('-', ' ').replace('_', ' ')
         components.append(name_clean)
     
@@ -684,69 +664,55 @@ def build_icon_text(icon: Dict[str, Any]) -> str:
     if icon.get("category"):
         components.append(icon["category"])
     
-    # Keywords (high importance)
     keywords = icon.get("keywords", [])
     if keywords:
         components.extend(keywords)
-        # Add keywords again for higher weight
-        components.extend(keywords)
+        components.extend(keywords)  # Double weight for keywords
     
-    # Use cases
     use_cases = icon.get("use_cases", [])
     if use_cases:
         components.extend(use_cases)
     
-    # Join and preprocess
     full_text = ' '.join([str(comp) for comp in components if comp])
     return preprocess_text(full_text)
 
-def build_prompt(request) -> str:
-    """Build prompt for badge generation model."""
+def build_chat_prompt(request) -> str:
+    """Build chat-formatted prompt for Phi-4-mini-instruct."""
     style_instruction = STYLE_DESCRIPTIONS.get(request.badge_style, STYLE_DESCRIPTIONS["Professional"])
     tone_instruction = TONE_DESCRIPTIONS.get(request.badge_tone, TONE_DESCRIPTIONS["Authoritative"])
     level_instruction = LEVEL_DESCRIPTIONS.get(request.badge_level, LEVEL_DESCRIPTIONS["Intermediate"]) if request.badge_level else ""
-    criterion_instruction = CRITERION_TEMPLATES.get(request.criteria_template, CRITERION_TEMPLATES["Task-Oriented"])
+    criterion_instruction = CRITERION_TEMPLATES.get(request.criterion_style, CRITERION_TEMPLATES["Task-Oriented"])
 
-    prompt = f"""STYLE: {style_instruction}
-TONE: {tone_instruction}"""
+    system_msg = "You are a badge metadata generator. Return only valid JSON with exact schema: {\"badge_name\": \"string\", \"badge_description\": \"string\", \"criteria\": {\"narrative\": \"string\"}}"
+    
+    user_content = f"""Create a badge for: {request.course_input}
+
+Style: {style_instruction}
+Tone: {tone_instruction}"""
 
     if level_instruction:
-        prompt += f"\nLEVEL: {level_instruction}"
+        user_content += f"\nLevel: {level_instruction}"
 
-    prompt += f"\nCRITERIA TEMPLATE: {criterion_instruction}"
-    prompt += f"\n\nCOURSE CONTENT:\n{request.course_input}"
-
-    if request.custom_instructions:
-        prompt += f"\n\nADDITIONAL INSTRUCTIONS: {request.custom_instructions}"
-
+    # Badge description instructions (includes institution)
+    desc_instructions = "Badge description should cover: competencies mastered, technical tools, real-world applications, assessment rigor, employer value, transferable skills."
+    
     if request.institution:
-        prompt += (
-            "\n\nISSUING INSTITUTION:\n"
-            f"{request.institution}\n"
-            "Make sure the institution is clearly and prominently mentioned in the output."
-        )
-
+        desc_instructions += f" Highlight that this badge is issued by {request.institution} and emphasize the institution's credibility."
+    
     if request.credit_hours > 0:
-        prompt += f"\n\nCREDIT HOURS: {request.credit_hours}"
+        desc_instructions += f" Mention {request.credit_hours} credit hours of coursework."
+        
+    if request.custom_instructions:
+        desc_instructions += f" Additional focus: {request.custom_instructions}"
+    
+    user_content += f"\n\n{desc_instructions}"
 
-    prompt += '\n\nGenerate Open Badges 3.0 compliant JSON metadata. Return a valid JSON object with exact schema: { "badge_name": "string", "badge_description": "string", "criteria": { "narrative": "string" } }'
+    # Criteria instructions (competency-focused only)
+    criteria_instructions = f"Criteria narrative should focus ONLY on competencies and learning requirements: completion requirements, learning outcomes, assessment methods, practical experiences, technical proficiencies, soft skills developed, evidence standards, validation processes. Template: {criterion_instruction}"
+    
+    user_content += f"\n\n{criteria_instructions}"
 
-    return prompt
-
-def find_balanced_json(text: str) -> Optional[str]:
-    """Find balanced JSON object in text."""
-    start = text.find('{')
-    if start == -1:
-        return None
-    depth = 0
-    for i in range(start, len(text)):
-        if text[i] == '{':
-            depth += 1
-        elif text[i] == '}':
-            depth -= 1
-            if depth == 0:
-                return text[start:i+1]
-    return None
+    return f"<|system|>{system_msg}<|end|>\n<|user|>{user_content}<|end|>\n<|assistant|>"
 
 def extract_json_from_text(text: str) -> dict:
     """Extract JSON object from model response text."""
@@ -761,28 +727,36 @@ def extract_json_from_text(text: str) -> dict:
     except json.JSONDecodeError:
         pass
 
-    # Try to find balanced JSON
-    candidate = find_balanced_json(s)
-    if candidate:
-        try:
-            return json.loads(candidate)
-        except json.JSONDecodeError:
-            pass
+    # Find balanced JSON
+    start = s.find('{')
+    if start == -1:
+        raise ValueError("No JSON object found")
+    
+    depth = 0
+    for i in range(start, len(s)):
+        if s[i] == '{':
+            depth += 1
+        elif s[i] == '}':
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(s[start:i+1])
+                except json.JSONDecodeError:
+                    pass
 
     # Try extracting between first { and last }
     first = s.find('{')
     last = s.rfind('}')
     if first != -1 and last != -1 and last > first:
-        sub = s[first:last+1]
         try:
-            return json.loads(sub)
+            return json.loads(s[first:last+1])
         except json.JSONDecodeError:
             pass
 
     raise ValueError("No valid JSON found in model response")
 
-async def call_model_async(prompt: str, timeout_s: float = 300.0) -> str:
-    """Call the badge generation model asynchronously."""
+async def call_model_async(prompt: str, timeout_s: float = 120.0) -> str:
+    """Call model with chat format."""
     payload = {
         "model": MODEL_CONFIG["model_name"],
         "prompt": prompt,
@@ -802,17 +776,12 @@ async def call_model_async(prompt: str, timeout_s: float = 300.0) -> str:
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(OLLAMA_API, json=payload)
         if resp.status_code != 200:
-            raise RuntimeError(f"Model server error {resp.status_code}: {resp.text[:200]}")
-        
-        try:
-            response_json = resp.json()
-            return response_json.get("response", "") or response_json.get("output", "") or json.dumps(response_json)
-        except Exception:
-            return resp.text
+            raise RuntimeError(f"Model error {resp.status_code}")
+        return resp.json().get("response", "")
 
 async def generate_badge_metadata_async(request) -> dict:
-    """Generate badge metadata using the model."""
-    prompt = build_prompt(request)
+    """Generate badge metadata using chat format."""
+    prompt = build_chat_prompt(request)
     text = await call_model_async(prompt)
     badge_json = extract_json_from_text(text)
     
@@ -822,23 +791,9 @@ async def generate_badge_metadata_async(request) -> dict:
     return badge_json
 
 async def get_icon_suggestions_for_badge(badge_name: str, badge_description: str, custom_instructions: str = "", top_k: int = 3):
-    """
-    Generate icon suggestions for a badge based on its metadata.
-    
-    Args:
-        badge_name: The name of the badge (generated by model)
-        badge_description: The description of the badge (generated by model)
-        custom_instructions: Custom instructions provided during badge creation
-        top_k: Number of icon suggestions to return
-        
-    Returns:
-        dict: Contains suggested_icon and icon_candidates
-    """
+    """Generate icon suggestions for a badge based on its metadata."""
     try:
-        # Build weighted badge text for icon matching
         badge_text = build_weighted_badge_text(badge_name, badge_description, custom_instructions)
-        
-        # Get icon suggestions using enhanced TF-IDF system
         candidates = icon_matcher.suggest_icons(badge_text, top_k=top_k)
         
         if not candidates:
@@ -847,7 +802,6 @@ async def get_icon_suggestions_for_badge(badge_name: str, badge_description: str
                 "icon_candidates": []
             }
 
-        # Format response
         top_candidate = candidates[0]["icon"]
         formatted_candidates = [
             {
@@ -871,10 +825,7 @@ async def get_icon_suggestions_for_badge(badge_name: str, badge_description: str
             "icon_candidates": []
         }
 
-# -------------------------
 # CLASSES
-# -------------------------
-
 class IconMatcher:
     def __init__(self, icons_data: List[Dict[str, Any]]):
         self.icons_data = icons_data
@@ -889,10 +840,7 @@ class IconMatcher:
             logger.warning("No icons data provided for TF-IDF system")
             return
         
-        # Build text representations for all icons
         self.icon_texts = [build_icon_text(icon) for icon in self.icons_data]
-        
-        # Filter out empty texts
         non_empty_texts = [text for text in self.icon_texts if text.strip()]
         
         if not non_empty_texts:
@@ -900,23 +848,20 @@ class IconMatcher:
             return
         
         try:
-            # Configure TF-IDF vectorizer with optimal parameters
             self.vectorizer = TfidfVectorizer(
-                max_features=1000,           # Limit vocabulary size
-                ngram_range=(1, 2),          # Include unigrams and bigrams
-                min_df=1,                    # Include all terms (small dataset)
-                max_df=0.95,                 # Remove very common terms
-                norm='l2',                   # L2 normalization for cosine similarity
-                lowercase=True,              # Already handled in preprocessing
-                stop_words=None,             # Already handled in preprocessing
-                token_pattern=r'\b\w+\b'     # Word boundaries
+                max_features=1000,
+                ngram_range=(1, 2),
+                min_df=1,
+                max_df=0.95,
+                norm='l2',
+                lowercase=True,
+                stop_words=None,
+                token_pattern=r'\b\w+\b'
             )
             
-            # Fit vectorizer and transform icon texts
             self.icon_tfidf_matrix = self.vectorizer.fit_transform(self.icon_texts)
             
-            logger.info(f"TF-IDF system initialized with {len(self.icons_data)} icons, "
-                       f"vocabulary size: {len(self.vectorizer.vocabulary_)}")
+            logger.info(f"TF-IDF system initialized with {len(self.icons_data)} icons")
             
         except Exception as e:
             logger.error(f"Failed to build TF-IDF system: {e}")
@@ -924,35 +869,23 @@ class IconMatcher:
             self.icon_tfidf_matrix = None
     
     def suggest_icons(self, badge_text: str, top_k: int = 3) -> List[Dict[str, Any]]:
-        """
-        Suggest icons based on badge text similarity.
-        Returns list of dictionaries with icon data and similarity scores.
-        """
+        """Suggest icons based on badge text similarity."""
         if not badge_text or not self.vectorizer or self.icon_tfidf_matrix is None:
-            # Return default icon if no valid system
             if self.icons_data:
                 return [{"icon": self.icons_data[0], "score": 0.0}]
             return []
         
         try:
-            # Preprocess badge text
             processed_badge_text = preprocess_text(badge_text)
             if not processed_badge_text:
                 return [{"icon": self.icons_data[0], "score": 0.0}]
             
-            # Transform badge text using fitted vectorizer
             badge_tfidf = self.vectorizer.transform([processed_badge_text])
-            
-            # Calculate cosine similarity
             similarities = cosine_similarity(badge_tfidf, self.icon_tfidf_matrix).flatten()
-            
-            # Apply keyword matching boost
             similarities = self._apply_keyword_boost(processed_badge_text, similarities)
             
-            # Get top-k indices
             top_indices = np.argsort(similarities)[::-1][:top_k]
             
-            # Build result list
             results = []
             for idx in top_indices:
                 if idx < len(self.icons_data):
@@ -965,16 +898,12 @@ class IconMatcher:
             
         except Exception as e:
             logger.error(f"Error in icon suggestion: {e}")
-            # Return default icon on error
             if self.icons_data:
                 return [{"icon": self.icons_data[0], "score": 0.0}]
             return []
     
     def _apply_keyword_boost(self, badge_text: str, similarities: np.ndarray) -> np.ndarray:
-        """
-        Apply keyword matching boost to similarity scores.
-        This provides additional scoring for exact keyword matches.
-        """
+        """Apply keyword matching boost to similarity scores."""
         try:
             badge_words = set(badge_text.lower().split())
             
@@ -982,19 +911,16 @@ class IconMatcher:
                 if i >= len(similarities):
                     break
                 
-                # Get icon keywords
                 icon_keywords = icon.get("keywords", [])
                 icon_words = set()
                 
                 for keyword in icon_keywords:
                     icon_words.update(preprocess_text(keyword).split())
                 
-                # Calculate keyword overlap
                 keyword_overlap = len(badge_words.intersection(icon_words))
                 
                 if keyword_overlap > 0:
-                    # Boost score based on keyword matches
-                    boost = min(0.3, keyword_overlap * 0.1)  # Max boost of 0.3
+                    boost = min(0.3, keyword_overlap * 0.1)
                     similarities[i] = min(1.0, similarities[i] + boost)
             
             return similarities
@@ -1003,19 +929,16 @@ class IconMatcher:
             logger.warning(f"Keyword boost failed: {e}")
             return similarities
 
-# -------------------------
 # PYDANTIC MODELS
-# -------------------------
-
 class BadgeRequest(BaseModel):
     course_input: str
     badge_style: str = "Professional"
     badge_tone: str = "Authoritative"
     badge_level: Optional[str] = "Intermediate"
+    criterion_style: str = "Task-Oriented"
     custom_instructions: Optional[str] = ""
     institution: Optional[str] = ""
     credit_hours: int = 0
-    criteria_template: str = "Task-Oriented"
 
 class BadgeValidated(BaseModel):
     badge_name: str = Field(..., alias="badge_name")
@@ -1026,22 +949,16 @@ class BadgeValidated(BaseModel):
 # Initialize global icon matcher
 icon_matcher = IconMatcher(ICONS_DATA)
 
-# -------------------------
 # API ENDPOINTS
-# -------------------------
-
 @app.post("/generate_badge")
 async def generate_badge(request: BadgeRequest):
-    """
-    Generate badge metadata with icon suggestions in a single API call.
-    Returns complete badge data with icon recommendations.
-    """
+    """Generate badge metadata with icon suggestions in a single API call."""
     start_time = time.time()
     try:
         # Step 1: Generate badge JSON from model
         badge_json = await generate_badge_metadata_async(request)
 
-        # Step 2: Validate using pydantic (expecting only 'criteria' field)
+        # Step 2: Validate using pydantic
         try:
             validated = BadgeValidated(
                 badge_name=badge_json.get("badge_name", ""),
@@ -1053,11 +970,11 @@ async def generate_badge(request: BadgeRequest):
             logger.warning("Badge validation failed: %s", ve)
             raise HTTPException(status_code=502, detail=f"Badge schema validation error: {ve}")
 
-        # Step 3: Get icon suggestions using the generated badge metadata
+        # Step 3: Get icon suggestions
         icon_data = await get_icon_suggestions_for_badge(
-            badge_name=validated.badge_name,          # ← Generated by model
-            badge_description=validated.badge_description,  # ← Generated by model
-            custom_instructions=request.custom_instructions, # ← Original user input
+            badge_name=validated.badge_name,
+            badge_description=validated.badge_description,
+            custom_instructions=request.custom_instructions,
             top_k=3
         )
 
@@ -1068,11 +985,7 @@ async def generate_badge(request: BadgeRequest):
             "badge_name": validated.badge_name,
             "badge_description": validated.badge_description,
             "criteria": validated.criteria,
-            "suggested_icon": icon_data["suggested_icon"],
-            # "icon_candidates": icon_data["icon_candidates"],
-            # "generation_time": generation_time,
-            # "model_used": MODEL_CONFIG["model_name"],
-            # "badge_id": len(badge_history) + 1
+            "suggested_icon": icon_data["suggested_icon"]
         }
 
         # Step 5: Store in history
@@ -1082,7 +995,6 @@ async def generate_badge(request: BadgeRequest):
             "course_input": (request.course_input[:100] + "...") if len(request.course_input) > 100 else request.course_input,
             "badge_style": request.badge_style,
             "badge_tone": request.badge_tone,
-            "criteria_template": request.criteria_template,
             "custom_instructions": request.custom_instructions,
             "badge_level": request.badge_level,
             "institution": request.institution,
@@ -1090,7 +1002,6 @@ async def generate_badge(request: BadgeRequest):
         }
         badge_history.append(history_entry)
         
-        # Keep only last 50 entries
         if len(badge_history) > 50:
             badge_history.pop(0)
 
@@ -1104,7 +1015,6 @@ async def generate_badge(request: BadgeRequest):
 
 @app.get("/badge_history")
 async def get_badge_history(limit: int = 20):
-    """Get badge generation history."""
     return {
         "history": badge_history[-limit:] if limit > 0 else badge_history,
         "total": len(badge_history)
@@ -1112,7 +1022,6 @@ async def get_badge_history(limit: int = 20):
 
 @app.get("/badge/{badge_id}")
 async def get_badge_by_id(badge_id: int):
-    """Get specific badge by ID."""
     badge = next((b for b in badge_history if b["id"] == badge_id), None)
     if not badge:
         raise HTTPException(status_code=404, detail="Badge not found")
@@ -1120,19 +1029,16 @@ async def get_badge_by_id(badge_id: int):
 
 @app.delete("/badge_history")
 async def clear_badge_history():
-    """Clear badge history."""
     global badge_history
     badge_history.clear()
     return {"message": "Badge history cleared"}
 
 @app.get("/icons")
 async def get_icons():
-    """Get all available icons."""
     return {"icons": ICONS_DATA, "total": len(ICONS_DATA)}
 
 @app.get("/system_info")
 async def get_system_info():
-    """Get system information for debugging."""
     return {
         "nltk_available": NLTK_AVAILABLE,
         "total_icons": len(ICONS_DATA),
@@ -1140,9 +1046,6 @@ async def get_system_info():
         "tfidf_matrix_shape": icon_matcher.icon_tfidf_matrix.shape if icon_matcher.icon_tfidf_matrix is not None else "Not initialized"
     }
 
-# -------------------------
-# Run with: uvicorn main:app --host 0.0.0.0 --port 8000
-# -------------------------
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
