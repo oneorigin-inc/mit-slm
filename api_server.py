@@ -41,7 +41,7 @@ app = FastAPI()
 logger = logging.getLogger("uvicorn.error")
 
 # -------------------------
-# ICONS_DATA (your icons)
+# ICONS_DATA
 # -------------------------
 ICONS_DATA = [
     {
@@ -53,7 +53,7 @@ ICONS_DATA = [
       "use_cases": [
         "Science achievement badges",
         "Chemistry course completion",
-        "Physics excellence",
+        "Physics excellence", 
         "Research participation",
         "Lab work proficiency"
       ]
@@ -129,62 +129,6 @@ ICONS_DATA = [
       ]
     },
     {
-      "name": "clock.png",
-      "display_name": "Clock",
-      "category": "skills",
-      "description": "Represents time management, punctuality, deadline achievement, scheduling skills, and efficiency",
-      "keywords": ["time", "management", "punctual", "deadline", "schedule", "timely", "efficient", "duration"],
-      "use_cases": [
-        "Time management excellence",
-        "Perfect attendance",
-        "Deadline achievement",
-        "Punctuality award",
-        "Speed completion bonus"
-      ]
-    },
-    {
-      "name": "cloud-service.png",
-      "display_name": "Cloud Service",
-      "category": "technology",
-      "description": "Represents cloud computing, online services, digital storage, SaaS platforms, and modern IT infrastructure",
-      "keywords": ["cloud", "computing", "storage", "online", "SaaS", "AWS", "Azure", "infrastructure"],
-      "use_cases": [
-        "Cloud computing certification",
-        "AWS/Azure proficiency",
-        "Online collaboration",
-        "Digital transformation",
-        "Cloud architecture skills"
-      ]
-    },
-    {
-      "name": "code.png",
-      "display_name": "Code",
-      "category": "technology",
-      "description": "Represents software development, programming proficiency, coding skills, and technical expertise",
-      "keywords": ["programming", "software", "development", "coding", "script", "algorithm", "function"],
-      "use_cases": [
-        "Software engineering achievement",
-        "Algorithm mastery",
-        "Code quality excellence",
-        "Programming contest winner",
-        "Technical skills certification"
-      ]
-    },
-    {
-      "name": "color-palette.png",
-      "display_name": "Color Palette",
-      "category": "creative",
-      "description": "Represents artistic skills, design thinking, creativity, visual arts, color theory, and aesthetic sense",
-      "keywords": ["art", "design", "creative", "colors", "painting", "visual", "aesthetic", "graphics"],
-      "use_cases": [
-        "Art class achievement",
-        "Design course completion",
-        "Creative excellence",
-        "Visual arts mastery",
-        "Graphic design certification"
-      ]
-    },
-    {
       "name": "crown.png",
       "display_name": "Crown",
       "category": "achievement",
@@ -196,104 +140,6 @@ ICONS_DATA = [
         "Leadership excellence",
         "Top performer",
         "Master level achievement"
-      ]
-    },
-    {
-      "name": "diamond.png",
-      "display_name": "Diamond",
-      "category": "achievement",
-      "description": "Represents premium quality, rare achievement, exceptional performance, valuable skills, and brilliance",
-      "keywords": ["premium", "quality", "rare", "valuable", "exceptional", "brilliant", "precious", "elite"],
-      "use_cases": [
-        "Premium certification",
-        "Exceptional achievement",
-        "Elite performance",
-        "Rare skill mastery",
-        "Diamond tier reached"
-      ]
-    },
-    {
-      "name": "dna.png",
-      "display_name": "DNA",
-      "category": "science",
-      "description": "Represents biology, genetics, life sciences, biotechnology, medical research, and biological studies",
-      "keywords": ["biology", "genetics", "DNA", "life science", "biotechnology", "medical", "research", "genome"],
-      "use_cases": [
-        "Biology achievement",
-        "Genetics course completion",
-        "Biotechnology certification",
-        "Medical studies excellence",
-        "Life science research"
-      ]
-    },
-    {
-      "name": "energy.png",
-      "display_name": "Energy",
-      "category": "science",
-      "description": "Represents physics, renewable energy, sustainability, power systems, enthusiasm, and dynamic performance",
-      "keywords": ["energy", "power", "physics", "renewable", "sustainability", "electric", "dynamic", "vigor"],
-      "use_cases": [
-        "Physics achievement",
-        "Renewable energy studies",
-        "Sustainability project",
-        "High energy performance",
-        "Environmental science"
-      ]
-    },
-    {
-      "name": "gear.png",
-      "display_name": "Gear",
-      "category": "engineering",
-      "description": "Represents engineering, mechanical skills, technical configuration, systems thinking, and process optimization",
-      "keywords": ["engineering", "mechanical", "settings", "technical", "machinery", "process", "system", "configuration"],
-      "use_cases": [
-        "Engineering excellence",
-        "Mechanical skills certification",
-        "Technical proficiency",
-        "Process improvement",
-        "System optimization"
-      ]
-    },
-    {
-      "name": "gem.png",
-      "display_name": "Gem",
-      "category": "achievement",
-      "description": "Represents precious achievement, special recognition, unique skills, and valuable contribution",
-      "keywords": ["precious", "special", "unique", "valuable", "rare", "jewel", "treasure", "exceptional"],
-      "use_cases": [
-        "Special recognition",
-        "Unique achievement",
-        "Valuable contribution",
-        "Hidden talent discovery",
-        "Exceptional skill"
-      ]
-    },
-    {
-      "name": "globe.png",
-      "display_name": "Globe",
-      "category": "geography",
-      "description": "Represents global awareness, geography, international studies, world languages, cultural diversity, and environmental studies",
-      "keywords": ["global", "world", "geography", "international", "earth", "culture", "diversity", "environment"],
-      "use_cases": [
-        "Geography excellence",
-        "Global studies completion",
-        "Language learning achievement",
-        "Cultural awareness",
-        "International collaboration"
-      ]
-    },
-    {
-      "name": "goal.png",
-      "display_name": "Goal",
-      "category": "achievement",
-      "description": "Represents goal achievement, target completion, objective success, milestone reached, and purposeful accomplishment",
-      "keywords": ["goal", "target", "objective", "achievement", "milestone", "purpose", "aim", "success"],
-      "use_cases": [
-        "Goal achievement",
-        "Milestone reached",
-        "Target exceeded",
-        "Objective completed",
-        "Personal best"
       ]
     },
     {
@@ -311,230 +157,6 @@ ICONS_DATA = [
       ]
     },
     {
-      "name": "growth.png",
-      "display_name": "Growth",
-      "category": "progress",
-      "description": "Represents personal development, progress, improvement, skill advancement, and continuous learning",
-      "keywords": ["growth", "progress", "improvement", "development", "advance", "evolve", "increase", "expand"],
-      "use_cases": [
-        "Personal development",
-        "Skill improvement",
-        "Progress milestone",
-        "Growth mindset achievement",
-        "Continuous improvement"
-      ]
-    },
-    {
-      "name": "handshake.png",
-      "display_name": "Handshake",
-      "category": "collaboration",
-      "description": "Represents collaboration, teamwork, partnership, agreement, cooperation, and professional networking",
-      "keywords": ["collaboration", "teamwork", "partnership", "cooperation", "agreement", "networking", "deal", "alliance"],
-      "use_cases": [
-        "Team collaboration excellence",
-        "Partnership achievement",
-        "Networking success",
-        "Cooperation award",
-        "Peer mentoring"
-      ]
-    },
-    {
-      "name": "ink-bottle.png",
-      "display_name": "Ink Bottle",
-      "category": "creative",
-      "description": "Represents writing skills, creative writing, literature, poetry, journalism, and traditional arts",
-      "keywords": ["writing", "literature", "poetry", "creative", "author", "journalism", "essay", "composition"],
-      "use_cases": [
-        "Creative writing excellence",
-        "Literature achievement",
-        "Poetry competition",
-        "Essay writing award",
-        "Journalism skills"
-      ]
-    },
-    {
-      "name": "leadership.png",
-      "display_name": "Leadership",
-      "category": "skills",
-      "description": "Represents leadership qualities, management skills, team guidance, decision making, and organizational abilities",
-      "keywords": ["leader", "management", "guide", "direct", "organize", "command", "influence", "inspire"],
-      "use_cases": [
-        "Leadership program completion",
-        "Team leader certification",
-        "Management training",
-        "Student council achievement",
-        "Project leadership"
-      ]
-    },
-    {
-      "name": "medal.png",
-      "display_name": "Medal",
-      "category": "achievement",
-      "description": "Represents recognition, award, honor, competitive achievement, and distinguished performance",
-      "keywords": ["medal", "award", "honor", "recognition", "prize", "achievement", "competition", "distinction"],
-      "use_cases": [
-        "Competition medal",
-        "Honor roll achievement",
-        "Distinguished performance",
-        "Academic medal",
-        "Sports achievement"
-      ]
-    },
-    {
-      "name": "microscope.png",
-      "display_name": "Microscope",
-      "category": "science",
-      "description": "Represents scientific research, laboratory skills, biology, detailed analysis, and investigative learning",
-      "keywords": ["science", "research", "laboratory", "biology", "analysis", "investigation", "microscopy", "study"],
-      "use_cases": [
-        "Lab skills certification",
-        "Research project completion",
-        "Biology excellence",
-        "Scientific investigation",
-        "Laboratory safety"
-      ]
-    },
-    {
-      "name": "music_note.png",
-      "display_name": "Music Note",
-      "category": "creative",
-      "description": "Represents musical talent, music theory, performance arts, rhythm, composition, and audio production",
-      "keywords": ["music", "note", "melody", "rhythm", "composition", "performance", "audio", "song"],
-      "use_cases": [
-        "Music theory completion",
-        "Performance excellence",
-        "Composition achievement",
-        "Instrument mastery",
-        "Choir participation"
-      ]
-    },
-    {
-      "name": "presentation.png",
-      "display_name": "Presentation",
-      "category": "communication",
-      "description": "Represents presentation skills, public speaking, communication excellence, teaching ability, and information sharing",
-      "keywords": ["presentation", "speaking", "communication", "teaching", "lecture", "seminar", "pitch", "demonstration"],
-      "use_cases": [
-        "Presentation excellence",
-        "Public speaking achievement",
-        "Teaching assistant",
-        "Seminar completion",
-        "Demo day winner"
-      ]
-    },
-    {
-      "name": "robot.png",
-      "display_name": "Robot",
-      "category": "technology",
-      "description": "Represents robotics, artificial intelligence, automation, STEM education, and technological innovation",
-      "keywords": ["robot", "AI", "automation", "robotics", "technology", "innovation", "machine", "artificial"],
-      "use_cases": [
-        "Robotics club achievement",
-        "AI course completion",
-        "Automation project",
-        "STEM excellence",
-        "Innovation award"
-      ]
-    },
-    {
-      "name": "shield.png",
-      "display_name": "Shield",
-      "category": "security",
-      "description": "Represents security, protection, cybersecurity, safety, defense, reliability, and trustworthiness",
-      "keywords": ["security", "protection", "safety", "defense", "cybersecurity", "guard", "secure", "trust"],
-      "use_cases": [
-        "Cybersecurity certification",
-        "Safety training completion",
-        "Security excellence",
-        "Data protection skills",
-        "Ethical hacking"
-      ]
-    },
-    {
-      "name": "solution.png",
-      "display_name": "Solution",
-      "category": "problem-solving",
-      "description": "Represents problem-solving, solution finding, analytical thinking, innovation, and creative resolution",
-      "keywords": ["solution", "solve", "answer", "resolve", "fix", "innovation", "breakthrough", "discovery"],
-      "use_cases": [
-        "Problem-solving excellence",
-        "Innovation challenge winner",
-        "Solution architect",
-        "Debugging champion",
-        "Case study completion"
-      ]
-    },
-    {
-      "name": "spaceship.png",
-      "display_name": "Spaceship",
-      "category": "innovation",
-      "description": "Represents space science, aerospace, exploration, innovation, ambitious goals, and futuristic thinking",
-      "keywords": ["space", "rocket", "aerospace", "exploration", "innovation", "astronomy", "future", "launch"],
-      "use_cases": [
-        "Space science achievement",
-        "Innovation project",
-        "Aerospace studies",
-        "Ambitious goal reached",
-        "STEM exploration"
-      ]
-    },
-    {
-      "name": "speech_bubble.png",
-      "display_name": "Speech Bubble",
-      "category": "communication",
-      "description": "Represents communication skills, dialogue, discussion, feedback, conversation, and social interaction",
-      "keywords": ["communication", "dialogue", "discussion", "chat", "conversation", "feedback", "talk", "message"],
-      "use_cases": [
-        "Communication skills",
-        "Debate team achievement",
-        "Peer feedback excellence",
-        "Discussion forum leader",
-        "Language proficiency"
-      ]
-    },
-    {
-      "name": "star.png",
-      "display_name": "Star",
-      "category": "achievement",
-      "description": "Represents excellence, outstanding performance, favorite status, quality, and special recognition",
-      "keywords": ["star", "excellence", "outstanding", "favorite", "quality", "special", "top", "best"],
-      "use_cases": [
-        "Star student",
-        "Outstanding performance",
-        "Excellence award",
-        "Top rating achieved",
-        "Special recognition"
-      ]
-    },
-    {
-      "name": "teamwork.png",
-      "display_name": "Teamwork",
-      "category": "collaboration",
-      "description": "Represents team collaboration, group work, cooperative learning, collective achievement, and synergy",
-      "keywords": ["team", "collaboration", "group", "together", "cooperative", "collective", "unity", "synergy"],
-      "use_cases": [
-        "Team project excellence",
-        "Group collaboration",
-        "Cooperative learning",
-        "Team building participation",
-        "Collective achievement"
-      ]
-    },
-    {
-      "name": "thumbs-up.png",
-      "display_name": "Thumbs Up",
-      "category": "feedback",
-      "description": "Represents approval, positive feedback, encouragement, good job recognition, and satisfaction",
-      "keywords": ["approval", "positive", "good", "like", "agree", "encourage", "satisfied", "yes"],
-      "use_cases": [
-        "Positive peer review",
-        "Good behavior award",
-        "Encouragement badge",
-        "Satisfaction achievement",
-        "Approval earned"
-      ]
-    },
-    {
       "name": "trophy.png",
       "display_name": "Trophy",
       "category": "achievement",
@@ -548,13 +170,13 @@ ICONS_DATA = [
         "Grand prize winner"
       ]
     }
-  ]
+]
 
 # -------------------------
-# Model configuration
+# CONFIGURATION
 # -------------------------
 MODEL_CONFIG = {
-    "model_name": "phi-4-ob-badge-generator:latest",
+    "model_name": "phi-4-ob:latest",
     "temperature": 0.2,
     "top_p": 0.8,
     "top_k": 30,
@@ -565,9 +187,6 @@ MODEL_CONFIG = {
 }
 OLLAMA_API = "http://localhost:11434/api/generate"
 
-# -------------------------
-# Style configurations
-# -------------------------
 STYLE_DESCRIPTIONS = {
     "Professional": "Use formal, business-oriented language emphasizing industry standards and career advancement.",
     "Academic": "Use scholarly language emphasizing learning outcomes and academic rigor.",
@@ -600,8 +219,9 @@ CRITERION_TEMPLATES = {
 badge_history: List[Dict[str, Any]] = []
 
 # -------------------------
-# Enhanced Text Preprocessing Functions
+# HELPER FUNCTIONS
 # -------------------------
+
 def preprocess_text(text: str) -> str:
     """
     Enhanced text preprocessing for better similarity matching.
@@ -701,9 +321,181 @@ def build_icon_text(icon: Dict[str, Any]) -> str:
     full_text = ' '.join([str(comp) for comp in components if comp])
     return preprocess_text(full_text)
 
+def build_prompt(request) -> str:
+    """Build prompt for badge generation model."""
+    style_instruction = STYLE_DESCRIPTIONS.get(request.badge_style, STYLE_DESCRIPTIONS["Professional"])
+    tone_instruction = TONE_DESCRIPTIONS.get(request.badge_tone, TONE_DESCRIPTIONS["Authoritative"])
+    level_instruction = LEVEL_DESCRIPTIONS.get(request.badge_level, LEVEL_DESCRIPTIONS["Intermediate"]) if request.badge_level else ""
+    criterion_instruction = CRITERION_TEMPLATES.get(request.criteria_template, CRITERION_TEMPLATES["Task-Oriented"])
+
+    prompt = f"""STYLE: {style_instruction}
+TONE: {tone_instruction}"""
+
+    if level_instruction:
+        prompt += f"\nLEVEL: {level_instruction}"
+
+    prompt += f"\nCRITERIA TEMPLATE: {criterion_instruction}"
+    prompt += f"\n\nCOURSE CONTENT:\n{request.course_input}"
+
+    if request.custom_instructions:
+        prompt += f"\n\nADDITIONAL INSTRUCTIONS: {request.custom_instructions}"
+
+    if request.institution:
+        prompt += (
+            "\n\nISSUING INSTITUTION:\n"
+            f"{request.institution}\n"
+            "Make sure the institution is clearly and prominently mentioned in the output."
+        )
+
+    if request.credit_hours > 0:
+        prompt += f"\n\nCREDIT HOURS: {request.credit_hours}"
+
+    prompt += '\n\nGenerate Open Badges 3.0 compliant JSON metadata. Return a valid JSON object with exact schema: { "badge_name": "string", "badge_description": "string", "criteria": { "narrative": "string" } }'
+
+    return prompt
+
+def find_balanced_json(text: str) -> Optional[str]:
+    """Find balanced JSON object in text."""
+    start = text.find('{')
+    if start == -1:
+        return None
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == '{':
+            depth += 1
+        elif text[i] == '}':
+            depth -= 1
+            if depth == 0:
+                return text[start:i+1]
+    return None
+
+def extract_json_from_text(text: str) -> dict:
+    """Extract JSON object from model response text."""
+    if not text:
+        raise ValueError("Empty model response")
+    
+    s = text.strip()
+    
+    # Try direct JSON parsing first
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
+
+    # Try to find balanced JSON
+    candidate = find_balanced_json(s)
+    if candidate:
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+
+    # Try extracting between first { and last }
+    first = s.find('{')
+    last = s.rfind('}')
+    if first != -1 and last != -1 and last > first:
+        sub = s[first:last+1]
+        try:
+            return json.loads(sub)
+        except json.JSONDecodeError:
+            pass
+
+    raise ValueError("No valid JSON found in model response")
+
+async def call_model_async(prompt: str, timeout_s: float = 300.0) -> str:
+    """Call the badge generation model asynchronously."""
+    payload = {
+        "model": MODEL_CONFIG["model_name"],
+        "prompt": prompt,
+        "stream": False,
+        "options": {
+            "temperature": MODEL_CONFIG["temperature"],
+            "top_p": MODEL_CONFIG["top_p"],
+            "top_k": MODEL_CONFIG["top_k"],
+            "num_predict": MODEL_CONFIG["num_predict"],
+            "repeat_penalty": MODEL_CONFIG["repeat_penalty"],
+            "num_ctx": MODEL_CONFIG["num_ctx"],
+            "stop": MODEL_CONFIG["stop"]
+        }
+    }
+    
+    timeout = httpx.Timeout(timeout_s, read=timeout_s + 30.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(OLLAMA_API, json=payload)
+        if resp.status_code != 200:
+            raise RuntimeError(f"Model server error {resp.status_code}: {resp.text[:200]}")
+        
+        try:
+            response_json = resp.json()
+            return response_json.get("response", "") or response_json.get("output", "") or json.dumps(response_json)
+        except Exception:
+            return resp.text
+
+async def generate_badge_metadata_async(request) -> dict:
+    """Generate badge metadata using the model."""
+    prompt = build_prompt(request)
+    text = await call_model_async(prompt)
+    badge_json = extract_json_from_text(text)
+    
+    if isinstance(badge_json, dict):
+        badge_json["raw_model_output"] = text
+    
+    return badge_json
+
+async def get_icon_suggestions_for_badge(badge_name: str, badge_description: str, custom_instructions: str = "", top_k: int = 3):
+    """
+    Generate icon suggestions for a badge based on its metadata.
+    
+    Args:
+        badge_name: The name of the badge (generated by model)
+        badge_description: The description of the badge (generated by model)
+        custom_instructions: Custom instructions provided during badge creation
+        top_k: Number of icon suggestions to return
+        
+    Returns:
+        dict: Contains suggested_icon and icon_candidates
+    """
+    try:
+        # Build weighted badge text for icon matching
+        badge_text = build_weighted_badge_text(badge_name, badge_description, custom_instructions)
+        
+        # Get icon suggestions using enhanced TF-IDF system
+        candidates = icon_matcher.suggest_icons(badge_text, top_k=top_k)
+        
+        if not candidates:
+            return {
+                "suggested_icon": {"name": ""},
+                "icon_candidates": []
+            }
+
+        # Format response
+        top_candidate = candidates[0]["icon"]
+        formatted_candidates = [
+            {
+                "name": c["icon"]["name"],
+                "display_name": c["icon"].get("display_name", ""),
+                "category": c["icon"].get("category", ""),
+                "score": round(c["score"], 4)
+            }
+            for c in candidates
+        ]
+
+        return {
+            "suggested_icon": {"name": top_candidate["name"]},
+            "icon_candidates": formatted_candidates
+        }
+
+    except Exception as e:
+        logger.warning(f"Icon suggestion failed: {e}")
+        return {
+            "suggested_icon": {"name": ""},
+            "icon_candidates": []
+        }
+
 # -------------------------
-# Enhanced TF-IDF Icon Matching System
+# CLASSES
 # -------------------------
+
 class IconMatcher:
     def __init__(self, icons_data: List[Dict[str, Any]]):
         self.icons_data = icons_data
@@ -832,12 +624,10 @@ class IconMatcher:
             logger.warning(f"Keyword boost failed: {e}")
             return similarities
 
-# Initialize global icon matcher
-icon_matcher = IconMatcher(ICONS_DATA)
+# -------------------------
+# PYDANTIC MODELS
+# -------------------------
 
-# -------------------------
-# Pydantic models
-# -------------------------
 class BadgeRequest(BaseModel):
     course_input: str
     badge_style: str = "Professional"
@@ -852,172 +642,61 @@ class BadgeValidated(BaseModel):
     badge_name: str = Field(..., alias="badge_name")
     badge_description: str = Field(..., alias="badge_description")
     criteria: Dict[str, Any] = Field(default_factory=dict)
-    _raw_model_output: str = Field("", alias="_raw_model_output")
+    raw_model_output: str = Field("", alias="raw_model_output")
+
+# Initialize global icon matcher
+icon_matcher = IconMatcher(ICONS_DATA)
 
 # -------------------------
-# Utility functions for badge generation
+# API ENDPOINTS
 # -------------------------
-def build_prompt(request: BadgeRequest) -> str:
-    """Build prompt for badge generation model."""
-    style_instruction = STYLE_DESCRIPTIONS.get(request.badge_style, STYLE_DESCRIPTIONS["Professional"])
-    tone_instruction = TONE_DESCRIPTIONS.get(request.badge_tone, TONE_DESCRIPTIONS["Authoritative"])
-    level_instruction = LEVEL_DESCRIPTIONS.get(request.badge_level, LEVEL_DESCRIPTIONS["Intermediate"]) if request.badge_level else ""
-    criterion_instruction = CRITERION_TEMPLATES.get(request.criteria_template, CRITERION_TEMPLATES["Task-Oriented"])
 
-    prompt = f"""STYLE: {style_instruction}
-TONE: {tone_instruction}"""
-
-    if level_instruction:
-        prompt += f"\nLEVEL: {level_instruction}"
-
-    prompt += f"\nCRITERIA TEMPLATE: {criterion_instruction}"
-    prompt += f"\n\nCOURSE CONTENT:\n{request.course_input}"
-
-    if request.custom_instructions:
-        prompt += f"\n\nADDITIONAL INSTRUCTIONS: {request.custom_instructions}"
-
-    if request.institution:
-        prompt += f"\n\nISSUING INSTITUTION: {request.institution}"
-
-    if request.credit_hours > 0:
-        prompt += f"\n\nCREDIT HOURS: {request.credit_hours}"
-
-    prompt += "\n\nGenerate Open Badges 3.0 compliant JSON metadata. Return a valid JSON object with exact schema: { \"badge_name\": \"string\", \"badge_description\": \"string\", \"criteria\": { \"narrative\": \"string\" } }"
-
-    return prompt
-
-def find_balanced_json(text: str) -> Optional[str]:
-    """Find balanced JSON object in text."""
-    start = text.find('{')
-    if start == -1:
-        return None
-    depth = 0
-    for i in range(start, len(text)):
-        if text[i] == '{':
-            depth += 1
-        elif text[i] == '}':
-            depth -= 1
-            if depth == 0:
-                return text[start:i+1]
-    return None
-
-def extract_json_from_text(text: str) -> dict:
-    """Extract JSON object from model response text."""
-    if not text:
-        raise ValueError("Empty model response")
-    
-    s = text.strip()
-    
-    # Try direct JSON parsing first
-    try:
-        return json.loads(s)
-    except json.JSONDecodeError:
-        pass
-
-    # Try to find balanced JSON
-    candidate = find_balanced_json(s)
-    if candidate:
-        try:
-            return json.loads(candidate)
-        except json.JSONDecodeError:
-            pass
-
-    # Try extracting between first { and last }
-    first = s.find('{')
-    last = s.rfind('}')
-    if first != -1 and last != -1 and last > first:
-        sub = s[first:last+1]
-        try:
-            return json.loads(sub)
-        except json.JSONDecodeError:
-            pass
-
-    raise ValueError("No valid JSON found in model response")
-
-# -------------------------
-# Async model calling
-# -------------------------
-async def call_model_async(prompt: str, timeout_s: float = 300.0) -> str:
-    """Call the badge generation model asynchronously."""
-    payload = {
-        "model": MODEL_CONFIG["model_name"],
-        "prompt": prompt,
-        "stream": False,
-        "options": {
-            "temperature": MODEL_CONFIG["temperature"],
-            "top_p": MODEL_CONFIG["top_p"],
-            "top_k": MODEL_CONFIG["top_k"],
-            "num_predict": MODEL_CONFIG["num_predict"],
-            "repeat_penalty": MODEL_CONFIG["repeat_penalty"],
-            "num_ctx": MODEL_CONFIG["num_ctx"],
-            "stop": MODEL_CONFIG["stop"]
-        }
-    }
-    
-    timeout = httpx.Timeout(timeout_s, read=timeout_s + 30.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.post(OLLAMA_API, json=payload)
-        if resp.status_code != 200:
-            raise RuntimeError(f"Model server error {resp.status_code}: {resp.text[:200]}")
-        
-        try:
-            response_json = resp.json()
-            return response_json.get("response", "") or response_json.get("output", "") or json.dumps(response_json)
-        except Exception:
-            return resp.text
-
-async def generate_badge_metadata_async(request: BadgeRequest) -> dict:
-    """Generate badge metadata using the model."""
-    prompt = build_prompt(request)
-    text = await call_model_async(prompt)
-    badge_json = extract_json_from_text(text)
-    
-    if isinstance(badge_json, dict):
-        badge_json["_raw_model_output"] = text
-    
-    return badge_json
-
-# -------------------------
-# API endpoints
-# -------------------------
 @app.post("/generate_badge")
 async def generate_badge(request: BadgeRequest):
     """
-    Step 1: Generate badge metadata (no icon suggestion).
-    Returns badge metadata and stores it in server history.
+    Generate badge metadata with icon suggestions in a single API call.
+    Returns complete badge data with icon recommendations.
     """
     start_time = time.time()
     try:
-        # Generate badge JSON from model
+        # Step 1: Generate badge JSON from model
         badge_json = await generate_badge_metadata_async(request)
 
-        # Normalize keys: allow 'criterion' or 'criteria'
-        if "criterion" in badge_json and "criteria" not in badge_json:
-            badge_json["criteria"] = badge_json.pop("criterion")
-
-        # Validate using pydantic
+        # Step 2: Validate using pydantic (expecting only 'criteria' field)
         try:
             validated = BadgeValidated(
                 badge_name=badge_json.get("badge_name", ""),
                 badge_description=badge_json.get("badge_description", ""),
                 criteria=badge_json.get("criteria", {}),
-                _raw_model_output=badge_json.get("_raw_model_output", "")
+                raw_model_output=badge_json.get("raw_model_output", "")
             )
         except ValidationError as ve:
             logger.warning("Badge validation failed: %s", ve)
             raise HTTPException(status_code=502, detail=f"Badge schema validation error: {ve}")
 
+        # Step 3: Get icon suggestions using the generated badge metadata
+        icon_data = await get_icon_suggestions_for_badge(
+            badge_name=validated.badge_name,          # ← Generated by model
+            badge_description=validated.badge_description,  # ← Generated by model
+            custom_instructions=request.custom_instructions, # ← Original user input
+            top_k=3
+        )
+
         generation_time = time.time() - start_time
+        
+        # Step 4: Build complete response
         result = {
             "badge_name": validated.badge_name,
             "badge_description": validated.badge_description,
             "criteria": validated.criteria,
+            "suggested_icon": icon_data["suggested_icon"],
+            "icon_candidates": icon_data["icon_candidates"],
             "generation_time": generation_time,
             "model_used": MODEL_CONFIG["model_name"],
             "badge_id": len(badge_history) + 1
         }
 
-        # Store in history
+        # Step 5: Store in history
         history_entry = {
             "id": len(badge_history) + 1,
             "timestamp": datetime.now().isoformat(),
@@ -1043,74 +722,6 @@ async def generate_badge(request: BadgeRequest):
     except Exception as e:
         logger.exception("Unexpected error in /generate_badge: %s", e)
         return {"error": "generation_failed", "message": str(e), "generation_time": time.time() - start_time}
-
-@app.post("/suggest_icon")
-async def suggest_icon(badge_payload: Dict[str, Any], top_k: int = 3):
-    """
-    Step 2: Suggest icons for a given badge JSON or by badge_id.
-    Uses enhanced TF-IDF approach with preprocessing and keyword boosting.
-    """
-    try:
-        badge_text = ""
-        
-        # Handle badge_id lookup
-        if "badge_id" in badge_payload:
-            try:
-                bid = int(badge_payload["badge_id"])
-            except Exception:
-                raise HTTPException(status_code=400, detail="badge_id must be an integer")
-            
-            # Find badge in history
-            badge_rec = next((b for b in badge_history if b["id"] == bid), None)
-            if not badge_rec:
-                raise HTTPException(status_code=404, detail=f"Badge id {bid} not found")
-            
-            # Extract from stored record
-            badge_name = badge_rec.get("badge_name", "").strip()
-            badge_desc = badge_rec.get("badge_description", "").strip()
-            custom_instructions = badge_rec.get("custom_instructions", "").strip()
-            
-            badge_text = build_weighted_badge_text(badge_name, badge_desc, custom_instructions)
-        else:
-            # Extract from payload
-            badge_name = badge_payload.get("badge_name", "").strip()
-            badge_desc = badge_payload.get("badge_description", "").strip()
-            custom_instructions = badge_payload.get("custom_instructions", "").strip()
-            
-            badge_text = build_weighted_badge_text(badge_name, badge_desc, custom_instructions)
-
-        # Get icon suggestions using enhanced TF-IDF system
-        candidates = icon_matcher.suggest_icons(badge_text, top_k=top_k)
-        
-        if not candidates:
-            return {
-                "suggested_icon": {"name": ""},
-                "icon_candidates": []
-            }
-
-        # Format response
-        top_candidate = candidates[0]["icon"]
-        formatted_candidates = [
-            {
-                "name": c["icon"]["name"],
-                "display_name": c["icon"].get("display_name", ""),
-                "category": c["icon"].get("category", ""),
-                "score": round(c["score"], 4)
-            }
-            for c in candidates
-        ]
-
-        return {
-            "suggested_icon": {"name": top_candidate["name"]},
-            "icon_candidates": formatted_candidates,
-            "matching_text": badge_text[:100] + "..." if len(badge_text) > 100 else badge_text
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Error in /suggest_icon: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/badge_history")
 async def get_badge_history(limit: int = 20):
