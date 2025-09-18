@@ -46,9 +46,9 @@ A FastAPI-based service that generates educational badge metadata and suggests a
 
 1. **Start the API server**
    ```bash
-   python main_2.py
+   python api_server.py
    # or
-   uvicorn main_2:app --host 0.0.0.0 --port 8000
+   uvicorn api_server:app --host 0.0.0.0 --port 8000
    ```
 
 2. **Generate your first badge**
