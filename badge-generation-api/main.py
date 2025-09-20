@@ -76,7 +76,7 @@ ICONS_DATA = [
         "Chemistry course completion",
         "Physics excellence",
         "Research participation",
-        "Lab work proficiency"
+          "Lab work proficiency"
       ]
     },
     {
@@ -601,7 +601,7 @@ def load_icons_data(json_file_path: str):
         print(f"⚠ Error loading icons: {e}, using keyword fallback")
 
 # Try to load icons on startup (will use fallback if file not found)
-load_icons_data("icons.json")
+# load_icons_data("icons.json")
 
 # DESCRIPTIONS AND TEMPLATES
 STYLE_DESCRIPTIONS = {
@@ -1230,7 +1230,7 @@ async def generate_badge_metadata_async(request) -> dict:
     
     user_content = f"""Create a unique badge for: {processed_course_input}
 
-IMPORTANT: If this covers multiple courses or complex content, create a comprehensive badge that encompasses all areas while maintaining focus and clarity.
+IMPORTANT: If this covers multiple courses or complex content, create a comprehensive badge name , description and criterion that encompasses all areas while maintaining focus and clarity.
 
 Style: {style_desc}
 Tone: {tone_desc}
@@ -1241,13 +1241,18 @@ Badge Name: Generate a creative and memorable name that captures the essence of 
 Badge Description: Provide a comprehensive description covering competencies mastered, technical tools, real-world applications, assessment rigor, employer value, and transferable skills. For multiple courses, integrate all subject areas cohesively.
 Criteria: Focus on specific learning requirements, assessment methods, practical experiences, and evidence standards that span all course content."""
 
-    if request.institution:
-        user_content += f"\n\nIMPORTANT: This badge MUST be issued by {request.institution}. Include {request.institution} in the badge description and emphasize the institution's credibility, reputation, and educational standards throughout the description."
+
         
     user_content += f"\n\nTarget Level: {random_params['badge_level']} - {level_desc}"
 
+    desc_instructions = "Badge description should cover: competencies mastered, technical tools, real-world applications, assessment rigor, employer value, transferable skills."
+    
+    if request.institution:
+        desc_instructions += f" Highlight that this badge is issued by {request.institution} and emphasize the institution's credibility."
+    user_content += f"\n\n{desc_instructions}"
+        
     if request.custom_instructions:
-        user_content += f"\n\nAdditional Requirements: {request.custom_instructions}"
+        user_content += f" Additional focus: {request.custom_instructions}. follow the instructions and generate badge data accordingly"
 
     prompt = f"<|system|>{system_msg}<|end|>\n<|user|>{user_content}<|end|>\n<|assistant|>"
     
@@ -1275,6 +1280,10 @@ class RegenerationRequest(BaseModel):
     regenerate_parameters: List[str] = Field(..., description="List of parameters to regenerate: ['badge_style', 'badge_tone', 'criterion_style', 'badge_level']")
     custom_instructions: Optional[str] = Field(default=None, description="Additional custom requirements")
     institution: Optional[str] = Field(default=None, description="Issuing institution name")
+
+class AppendDataRequest(BaseModel):
+    badge_id: int = Field(..., description="ID of the badge to edit")
+    append_data: Dict[str, Any] = Field(..., description="Additional data to append to the badge")
 
 class BadgeValidated(BaseModel):
     badge_name: str
@@ -1313,19 +1322,19 @@ Return JSON format:
     response = await call_model_async(prompt)
     return extract_json_from_response(response)
 
-@app.post("/generate_badge", response_model=BadgeResponse)
+@app.post("/generate-badge-suggestions", response_model=BadgeResponse)
 async def generate_badge(request: BadgeRequest):
     """Generate a single badge with random parameter selection"""
     start_time = time.time()
     try:
-        # Generate badge metadata with random parameters
+        # Generate badge metadata with random parameters (UNCHANGED)
         badge_json = await generate_badge_metadata_async(request)
 
         try:
             validated = BadgeValidated(
                 badge_name=badge_json.get("badge_name", ""),
                 badge_description=badge_json.get("badge_description", ""),
-                criteria=badge_json.get("criteria", {}),
+                criteria=badge_json.get("criteria", {}),  # This already contains {"narrative": "string"}
                 raw_model_output=badge_json.get("raw_model_output", "")
             )
         except ValidationError as ve:
@@ -1371,22 +1380,16 @@ async def generate_badge(request: BadgeRequest):
 
         # Generate badge ID
         badge_id = random.randint(100000, 999999)
-        
-        # Extract narrative from criteria
-        criteria_narrative = ""
-        if isinstance(validated.criteria, dict):
-            criteria_narrative = validated.criteria.get("narrative", "")
 
-        # Create the response in the required format
+        # Transform to new JSON schema format
         result = BadgeResponse(
             credentialSubject={
                 "achievement": {
-                    "criteria": {
-                        "narrative": criteria_narrative
-                    },
+                    "criteria": validated.criteria,  # This is already {"narrative": "string"} format
                     "description": validated.badge_description,
                     "image": {
-                        "id": f"https://example.com/achievements/badge_{badge_id}/image"
+                        "id": f"https://example.com/achievements/badge_{badge_id}/image",
+                        "image_base64": None  # Will be populated later when image is generated
                     },
                     "name": validated.badge_name
                 }
@@ -1395,7 +1398,7 @@ async def generate_badge(request: BadgeRequest):
             badge_id=badge_id
         )
 
-        # Store in history (keep selected_parameters in history for logging/debugging)
+        # Store in history with the full result for editing capability
         history_entry = {
             "id": len(badge_history) + 1,
             "timestamp": datetime.now().isoformat(),
@@ -1410,6 +1413,7 @@ async def generate_badge(request: BadgeRequest):
             "selected_image_type": image_type,
             "selected_parameters": badge_json.get("selected_parameters", {}),
             "badge_id": badge_id,
+            "result": result,  # Store the full result for editing
             "generation_time": time.time() - start_time
         }
         badge_history.append(history_entry)
@@ -1424,7 +1428,7 @@ async def generate_badge(request: BadgeRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("Unexpected error in /generate_badge: %s", e)
+        logger.exception("Unexpected error in /generate-badge-suggestions: %s", e)
         raise HTTPException(status_code=500, detail=f"Badge generation error: {str(e)}")
 
 @app.post("/regenerate_badge", response_model=BadgeResponse)
@@ -1456,14 +1460,14 @@ async def regenerate_badge(request: RegenerationRequest):
         mock_request.criterion_style = updated_params['criterion_style']
         mock_request.badge_level = updated_params['badge_level']
         
-        # Generate badge with updated parameters
+        # Generate badge with updated parameters (UNCHANGED)
         badge_json = await generate_badge_metadata_async(mock_request)
 
         try:
             validated = BadgeValidated(
                 badge_name=badge_json.get("badge_name", ""),
                 badge_description=badge_json.get("badge_description", ""),
-                criteria=badge_json.get("criteria", {}),
+                criteria=badge_json.get("criteria", {}),  # This already contains {"narrative": "string"}
                 raw_model_output=badge_json.get("raw_model_output", "")
             )
         except ValidationError as ve:
@@ -1508,19 +1512,12 @@ async def regenerate_badge(request: RegenerationRequest):
 
         # Generate badge ID
         badge_id = random.randint(100000, 999999)
-        
-        # Extract narrative from criteria
-        criteria_narrative = ""
-        if isinstance(validated.criteria, dict):
-            criteria_narrative = validated.criteria.get("narrative", "")
 
-        # Create the response in the required format
+        # Transform to new JSON schema format
         result = BadgeResponse(
             credentialSubject={
                 "achievement": {
-                    "criteria": {
-                        "narrative": criteria_narrative
-                    },
+                    "criteria": validated.criteria,  # This is already {"narrative": "string"} format
                     "description": validated.badge_description,
                     "image": {
                         "id": f"https://example.com/achievements/badge_{badge_id}/image"
@@ -1540,6 +1537,63 @@ async def regenerate_badge(request: RegenerationRequest):
     except Exception as e:
         logger.exception("Unexpected error in /regenerate_badge: %s", e)
         raise HTTPException(status_code=500, detail=f"Badge regeneration error: {str(e)}")
+
+@app.post("/edit-badge-metadata")
+async def edit_badge_metadata(request: AppendDataRequest):
+    """Append data to an existing badge result from history"""
+    try:
+        # Find the badge in history by ID
+        target_badge = None
+        for badge in badge_history:
+            if badge.get("id") == request.badge_id:
+                target_badge = badge
+                break
+                
+        if not target_badge:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Badge with ID {request.badge_id} not found in history"
+            )
+            
+        # Get the existing result
+        existing_result = target_badge.get("result")
+        if not existing_result:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Badge with ID {request.badge_id} has no result data to append to"
+            )
+            
+        # Convert existing result to dict if it's a Pydantic model
+        if hasattr(existing_result, 'dict'):
+            result_dict = existing_result.dict()
+        elif hasattr(existing_result, '__dict__'):
+            result_dict = existing_result.__dict__
+        else:
+            result_dict = dict(existing_result) if isinstance(existing_result, dict) else {}
+            
+        # Append the new data to badge_data
+        updated_result = result_dict.copy()
+        if 'badge_data' in updated_result:
+            updated_result['badge_data'].update(request.append_data)
+        else:
+            # Fallback if badge_data doesn't exist
+            updated_result.update(request.append_data)
+            
+        # Update the badge history entry with the new result
+        target_badge["result"] = updated_result
+        target_badge["last_updated"] = datetime.now().isoformat()
+        
+        return {
+            "message": f"Data successfully appended to badge {request.badge_id}",
+            "badge_id": request.badge_id,
+            "updated_result": updated_result
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Unexpected error in /edit-badge-metadata: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to append data: {str(e)}")
 
 @app.get("/badge_history")
 async def get_badge_history():
