@@ -19,7 +19,7 @@ A comprehensive FastAPI-based system for generating educational badges with AI-p
 
 - Python 3.8+
 - Ollama installed and running
-- Phi-4 model available in Ollama
+- Finetuned Phi-4-mini-instruct model created locally using Modelfile and deployed on Ollama
 
 ## Installation
 
