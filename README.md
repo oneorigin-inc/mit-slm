@@ -1,187 +1,236 @@
+Here's the updated README file based on your request:
+
 # Badge Generation API
 
-A FastAPI-based service that generates educational badge metadata and suggests appropriate icons using AI and TF-IDF text matching algorithms.
+A comprehensive FastAPI-based system for generating educational badges with AI-powered content creation, intelligent icon selection, and customizable parameters.
 
 ## Features
 
-- **AI-Powered Badge Generation**: Creates Open Badges 3.0 compliant metadata using local Ollama models
-- **Intelligent Icon Matching**: Uses TF-IDF vectorization and cosine similarity to suggest relevant icons
-- **Multiple Customization Options**: Various styles, tones, and criteria templates
-- **Enhanced Text Processing**: Optional NLTK integration for improved text analysis
-- **RESTful API**: Clean, well-documented endpoints
-- **In-Memory History**: Tracks generated badges with persistence across sessions
+- **AI-Powered Badge Generation** - Creates unique badge names, descriptions, and criteria using Ollama/Phi-4 models
+- **Smart Parameter Selection** - Random parameter generation with user override capability  
+- **Intelligent Icon Matching** - TF-IDF similarity-based icon suggestions
+- **Flexible Image Configuration** - Supports both text overlay and icon-based badge designs
+- **Multiple Course Support** - Handles single or multiple course inputs
+- **Badge History Tracking** - Stores and manages generation history
+- **Metadata Editing** - Append custom data to existing badges
+- **Comprehensive API** - RESTful endpoints with detailed documentation
 
 ## Prerequisites
 
 - Python 3.8+
-- [Ollama](https://ollama.ai/) installed and running locally
-- Required Python packages (see Installation)
+- Ollama installed and running
+- Phi-4 model available in Ollama
 
 ## Installation
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd badge-generation-api
-   ```
+### 1. Clone the Repository
+```bash
+git clone <repository-url>
+cd badge-generation-api
+```
 
-2. **Install dependencies**
-   ```bash
-   pip install fastapi uvicorn httpx pydantic scikit-learn numpy
-   ```
+### 2. Create Virtual Environment
+```bash
+python -m venv venv
 
-3. **Optional: Install NLTK for enhanced text processing**
-   ```bash
-   pip install nltk
-   ```
+# On Windows:
+venv\Scripts\activate
 
-4. **Set up Ollama model**
-   ```bash
-   # Install Ollama from https://ollama.ai/
-   # Pull the required model
-   ollama pull phi-4-ob-badge-generator:latest
-   ```
+# On macOS/Linux:
+source venv/bin/activate
+```
 
-## Quick Start
+### 3. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
 
-1. **Start the API server**
-   ```bash
-   python api_server.py
-   # or
-   uvicorn api_server:app --host 0.0.0.0 --port 8000
-   ```
+### 4. Download NLTK Data
+```bash
+python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords')"
+```
 
-2. **Generate your first badge**
-   ```bash
-   curl -X POST "http://localhost:8000/generate_badge" \
-   -H "Content-Type: application/json" \
-   -d '{
-     "course_input": "Introduction to Python Programming covering variables, functions, and object-oriented programming",
-     "badge_style": "Professional",
-     "badge_tone": "Encouraging"
-   }'
-   ```
+### 5. Setup Ollama Model
 
-3. **Get icon suggestions**
-   ```bash
-   curl -X POST "http://localhost:8000/suggest_icon" \
-   -H "Content-Type: application/json" \
-   -d '{"badge_id": 1}'
-   ```
+Create a Modelfile for your custom Phi-4 model:
+
+```dockerfile
+# Modelfile
+FROM phi4:latest
+
+PARAMETER temperature 0.15
+PARAMETER top_p 0.8
+PARAMETER top_k 30
+PARAMETER num_predict 400
+PARAMETER repeat_penalty 1.05
+PARAMETER num_ctx 4096
+PARAMETER stop "<|end|>"
+PARAMETER stop "}\n\n"
+
+SYSTEM """You are a professional badge metadata generator specializing in educational credentials. You generate creative, industry-relevant badge names, comprehensive descriptions, and detailed criteria for learning achievements. Always return valid JSON in the exact format requested."""
+
+TEMPLATE """<|system|>
+{{ .System }}<|end|>
+<|user|>
+{{ .Prompt }}<|end|>
+<|assistant|>"""
+```
+
+### 6. Create and Run the Model
+```bash
+# Create the model
+ollama create phi4-badge -f Modelfile
+
+# Verify the model is available
+ollama list
+```
+
+### 7. Update Configuration
+Update the model name in `main.py` if using a different model:
+
+```python
+MODEL_CONFIG = {
+    "model_name": "phi4-badge",  # Update this to match your model
+    "temperature": 0.15,
+    "top_p": 0.8,
+    "top_k": 30,
+    "num_predict": 400,
+    "repeat_penalty": 1.05,
+    "num_ctx": 4096,
+    "stop": ["<|end|>", "}\n\n"]
+}
+```
+
+## Running the API
+
+### Development Server
+```bash
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Production Server
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+The API will be available at: `http://localhost:8000`
+
+Interactive documentation: `http://localhost:8000/docs`
 
 ## API Endpoints
 
-### Badge Generation
-- `POST /generate_badge` - Generate badge metadata
-- `POST /suggest_icon` - Suggest appropriate icons
+### 1. Generate Badge Suggestions
+**POST** `/generate-badge-suggestions`
 
-### Data Management
-- `GET /badge_history` - Retrieve badge history
-- `GET /badge/{badge_id}` - Get specific badge
-- `DELETE /badge_history` - Clear history
+Generate badges with flexible parameter control.
 
-### System Information
-- `GET /icons` - List available icons
-- `GET /system_info` - System configuration
-
-## Configuration Options
-
-### Badge Styles
-| Style | Description |
-|-------|-------------|
-| Professional | Formal, business-oriented language |
-| Academic | Scholarly language emphasizing learning outcomes |
-| Industry | Sector-specific terminology |
-| Technical | Precise technical language |
-| Creative | Engaging, innovation-focused language |
-
-### Badge Tones
-| Tone | Description |
-|------|-------------|
-| Authoritative | Confident, definitive tone |
-| Encouraging | Motivating, supportive tone |
-| Detailed | Comprehensive with examples |
-| Concise | Short, direct guidance |
-| Engaging | Dynamic, compelling language |
-
-### Criteria Templates
-| Template | Description |
-|----------|-------------|
-| Task-Oriented | Imperative commands directing learners |
-| Evidence-Based | Focus on demonstrated abilities |
-| Outcome-Focused | Future tense emphasizing expected outcomes |
-
-## Usage Examples
-
-### Generate a Professional Badge
-```python
-import requests
-
-badge_request = {
-    "course_input": "Advanced Machine Learning covering neural networks, deep learning, and model optimization",
-    "badge_style": "Professional",
-    "badge_tone": "Authoritative",
+**Request Body:**
+```json
+{
+    "course_input": "Introduction to Machine Learning with Python",
+    "badge_style": "Technical",
+    "badge_tone": "Detailed", 
+    "criterion_style": "Evidence-Based",
     "badge_level": "Advanced",
-    "institution": "Tech University",
-    "credit_hours": 3,
-    "custom_instructions": "Focus on practical applications"
+    "custom_instructions": "Focus on practical applications",
+    "institution": "Tech University"
 }
-
-response = requests.post("http://localhost:8000/generate_badge", json=badge_request)
-badge = response.json()
-print(f"Generated badge: {badge['badge_name']}")
 ```
 
-### Get Icon Suggestions
-```python
-# Using badge ID
-icon_request = {"badge_id": 1}
-response = requests.post("http://localhost:8000/suggest_icon", json=icon_request)
-suggestions = response.json()
+**Parameters:**
+- **course_input** (required): Course description or multiple courses
+- **badge_style**: "Professional", "Academic", "Industry", "Technical", "Creative", or "" (random)
+- **badge_tone**: "Authoritative", "Encouraging", "Detailed", "Concise", "Engaging", or "" (random)
+- **criterion_style**: "Task-Oriented", "Evidence-Based", "Outcome-Focused", or "" (random)
+- **badge_level**: "Beginner", "Intermediate", "Advanced", or "" (random)
+- **custom_instructions** (optional): Additional formatting requirements
+- **institution** (optional): Issuing institution name
 
-# Using badge data directly
-icon_request = {
-    "badge_name": "Python Programming Expert",
-    "badge_description": "Demonstrates proficiency in Python programming"
+### 2. Edit Badge Metadata
+**POST** `/edit-badge-metadata`
+
+Append additional data to existing badges.
+
+**Request Body:**
+```json
+{
+    "badge_id": 123456,
+    "append_data": {
+        "duration": "40 hours",
+        "tags": ["programming", "machine-learning"],
+        "prerequisites": "Basic Python knowledge"
+    }
 }
-response = requests.post("http://localhost:8000/suggest_icon", json=icon_request)
 ```
 
-## Available Icons
-
-The system includes 34 predefined icons across categories:
-- **Technology**: code, cloud-service, robot, binary-code
-- **Achievement**: crown, diamond, medal, star, trophy
-- **Science**: atom, dna, energy, microscope
-- **Creative**: color-palette, ink-bottle, music_note
-- **Skills**: leadership, presentation, teamwork
-- **Academic**: graduation-cap, growth
-- And more...
-
-## Architecture
-
-### Core Components
-
-1. **Badge Generation Engine**
-   - Uses Ollama AI models for content generation
-   - Supports customizable prompts and styles
-   - Validates output against Open Badges 3.0 schema
-
-2. **Icon Matching System**
-   - TF-IDF vectorization for text similarity
-   - Keyword boosting for improved accuracy
-   - Cosine similarity scoring
-
-3. **Text Processing Pipeline**
-   - Optional NLTK integration
-   - Stopword removal and stemming
-   - Weighted text combination
-
-### Data Flow
+**Response:**
+```json
+{
+    "message": "Data successfully appended to badge 123456",
+    "badge_id": 123456,
+    "updated_result": {
+        "credentialSubject": {...},
+        "imageConfig": {...},
+        "badge_id": 123456,
+        "duration": "40 hours",
+        "tags": ["programming", "machine-learning"],
+        "prerequisites": "Basic Python knowledge"
+    }
+}
 ```
-Course Input → Prompt Builder → AI Model → JSON Validation → Badge Metadata
-                                                                    ↓
-Icon Suggestions ← TF-IDF Matcher ← Text Processor ← Badge Content
+
+### 3. Get Badge History
+**GET** `/badge_history`
+
+Retrieve generation history and stored badges.
+
+### 4. Get Available Styles
+**GET** `/styles`
+
+Get all available parameter options and descriptions.
+
+### 5. Health Check
+**GET** `/health`
+
+Check API status and availability.
+
+## Response Format
+
+Badge generation endpoints (`/generate-badge-suggestions`) return:
+
+```json
+{
+    "credentialSubject": {
+        "achievement": {
+            "criteria": {
+                "narrative": "Students will be able to..."
+            },
+            "description": "This comprehensive badge demonstrates...",
+            "image": {
+                "id": "https://example.com/achievements/badge_123456/image"
+            },
+            "name": "Machine Learning Specialist"
+        }
+    },
+    "imageConfig": {
+        "canvas": {"width": 600, "height": 600},
+        "layers": [
+            {
+                "type": "BackgroundLayer",
+                "mode": "solid",
+                "color": "#FFFFFF",
+                "z": 0
+            },
+            {
+                "type": "ShapeLayer",
+                "shape": "circle",
+                "fill": {"mode": "gradient", "start_color": "#FF6F61", "end_color": "#118AB2"},
+                "z": 15
+            }
+        ]
+    },
+    "badge_id": 123456
+}
 ```
 
 ## Configuration
@@ -189,98 +238,193 @@ Icon Suggestions ← TF-IDF Matcher ← Text Processor ← Badge Content
 ### Model Configuration
 ```python
 MODEL_CONFIG = {
-    "model_name": "phi-4-ob-badge-generator:latest",
-    "temperature": 0.2,
+    "model_name": "phi4-badge",
+    "temperature": 0.15,
     "top_p": 0.8,
     "top_k": 30,
-    "num_predict": 600,
+    "num_predict": 400,
     "repeat_penalty": 1.05,
     "num_ctx": 4096,
     "stop": ["<|end|>", "}\n\n"]
 }
 ```
 
-### TF-IDF Parameters
+### Icon Configuration
+Place icon files in `icons.json` or use the built-in fallback keywords.
+
+## Usage Examples
+
+### Generate Random Badge
 ```python
-TfidfVectorizer(
-    max_features=1000,
-    ngram_range=(1, 2),
-    min_df=1,
-    max_df=0.95,
-    norm='l2'
-)
+import requests
+
+response = requests.post("http://localhost:8000/generate-badge-suggestions", json={
+    "course_input": "Data Science Fundamentals"
+})
+
+badge_data = response.json()
+print(f"Badge Name: {badge_data['credentialSubject']['achievement']['name']}")
 ```
+
+### Generate with Specific Parameters
+```python
+response = requests.post("http://localhost:8000/generate-badge-suggestions", json={
+    "course_input": "Advanced Python Programming",
+    "badge_style": "Technical",
+    "badge_tone": "Detailed",
+    "criterion_style": "", # Random
+    "badge_level": "",     # Random
+    "institution": "Code Academy"
+})
+```
+
+### Generate Multiple Course Badge
+```python
+response = requests.post("http://localhost:8000/generate-badge-suggestions", json={
+    "course_input": "Python Programming; Machine Learning; Data Visualization",
+    "badge_style": "Professional",
+    "institution": "Data Science Institute"
+})
+```
+
+### Edit Badge Metadata
+```python
+# First generate a badge, then edit it
+edit_response = requests.post("http://localhost:8000/edit-badge-metadata", json={
+    "badge_id": 123456,
+    "append_data": {
+        "certification_type": "Industry Recognized",
+        "valid_until": "2027-12-31",
+        "tags": ["data-science", "python", "analytics"]
+    }
+})
+
+updated_badge = edit_response.json()["updated_result"]
+```
+
+## Architecture
+
+- **FastAPI** - Modern, fast web framework for API development
+- **Ollama + Phi-4** - AI model for intelligent content generation
+- **scikit-learn** - TF-IDF similarity for smart icon matching
+- **NLTK** - Natural language processing and text preprocessing
+- **Pydantic** - Data validation and serialization
+- **httpx** - Async HTTP client for model API calls
+
+## Features Deep Dive
+
+### Smart Parameter System
+- User-specified parameters are always used exactly as provided
+- Empty/missing parameters are automatically filled with random selections
+- Allows partial control over generation while maintaining variety
+- Supports mixed approaches (some fixed, some random)
+
+### Icon Intelligence
+- TF-IDF similarity matching between course content and icon descriptions
+- Automatic fallback to keyword matching if icon database unavailable
+- Dynamic icon selection based on semantic content context
+- Supports both text overlay and icon-based badge designs
+
+### Multi-Course Support
+- Automatically detects multiple courses in input using various delimiters
+- Creates unified badges covering all subject areas cohesively
+- Supports delimiters: newlines, semicolons, 'and', '+', '|', '//'
+- Maintains focus while encompassing all course content
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Ollama Connection Error**
-   ```
-   Error: Model server error 404
-   ```
-   - Ensure Ollama is running: `ollama serve`
-   - Verify model is installed: `ollama list`
-
-2. **NLTK Download Required**
-   ```
-   Warning: NLTK processing failed
-   ```
-   - Install NLTK: `pip install nltk`
-   - Download required data: The system auto-downloads punkt and stopwords
-
-3. **JSON Parsing Error**
-   ```
-   Error: No valid JSON found in model response
-   ```
-   - Check model temperature settings
-   - Verify model is properly trained for JSON output
-
-### Performance Optimization
-
-- **Memory Usage**: History limited to 50 entries
-- **Response Time**: Typical generation: 2-5 seconds
-- **Concurrency**: Supports multiple simultaneous requests
-
-## Development
-
-### Running Tests
+**Ollama Connection Error**
 ```bash
-# Install test dependencies
-pip install pytest httpx
+# Ensure Ollama is running
+ollama serve
 
-# Run tests
-pytest tests/
+# Verify model is available
+ollama list
+
+# Check if API is accessible
+curl http://localhost:11434/api/generate
 ```
 
-### Adding New Icons
-1. Add icon data to `ICONS_DATA` list
-2. Include: name, display_name, category, description, keywords, use_cases
-3. Restart server to rebuild TF-IDF matrix
+**NLTK Data Missing**
+```bash
+python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords')"
+```
 
-### Extending Styles/Tones
-1. Add entries to `STYLE_DESCRIPTIONS` or `TONE_DESCRIPTIONS`
-2. Update API documentation
-3. No server restart required
+**Model Not Found**
+```bash
+# Pull the base model
+ollama pull phi4:latest
+
+# Create custom model with Modelfile
+ollama create phi4-badge -f Modelfile
+
+# Test the model
+ollama run phi4-badge "Test message"
+```
+
+**JSON Parsing Errors**
+- Ensure model is responding with valid JSON
+- Check model temperature and parameters
+- Verify system prompt in Modelfile
+
+## Performance
+
+- **Response Time**: ~2-5 seconds per badge generation
+- **Concurrent Requests**: Supports multiple simultaneous requests
+- **Memory Usage**: ~200MB base + model memory requirements
+- **Rate Limiting**: Configure as needed for your use case
+- **Caching**: In-memory badge history with 50-item limit
+
+## Security
+
+- Input validation using Pydantic models
+- Request timeout protection (120s default)
+- Comprehensive error handling and logging
+- No sensitive data storage or persistence
+- Safe JSON parsing with error recovery
+
+## Dependencies
+
+Core requirements:
+```
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.1
+httpx==0.25.2
+scikit-learn==1.3.2
+numpy==1.24.4
+nltk==3.8.1
+typing-extensions==4.8.0
+```
 
 ## Contributing
 
 1. Fork the repository
-2. Create feature branch
-3. Add tests for new functionality
-4. Submit pull request
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-[Specify your license here]
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Support
 
-For issues and questions:
-- Check troubleshooting section
-- Review API documentation
-- Submit issues on GitHub
+- **Documentation**: Interactive API docs at `/docs` endpoint
+- **Issues**: Open GitHub issues for bugs and feature requests
+- **API Reference**: Available at `/docs` and `/redoc` endpoints when running
+- **Testing**: Use `/health` endpoint to verify API status
 
----
+## Acknowledgments
 
-**Note**: This service requires a local Ollama installation with the specified model. Ensure adequate system resources for AI model inference.
+- **Ollama Team** - For the excellent model serving platform
+- **Microsoft** - For the Phi-4 model architecture
+- **FastAPI** - For the outstanding web framework
+- **scikit-learn** - For machine learning utilities
+
+***
+
+**Happy Badge Generation!**
