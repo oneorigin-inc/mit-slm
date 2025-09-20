@@ -1,4 +1,3 @@
-Here's the updated README file based on your request:
 
 # Badge Generation API
 
