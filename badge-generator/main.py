@@ -13,6 +13,7 @@ import random
 # TF-IDF & cosine similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 # Text preprocessing
 try:
@@ -599,38 +600,113 @@ def load_icons_data(json_file_path: str):
     except Exception as e:
         print(f"⚠ Error loading icons: {e}, using keyword fallback")
 
-# Try to load icons on startup
+# Try to load icons on startup (will use fallback if file not found)
 load_icons_data("icons.json")
 
-# STYLE_DESCRIPTIONS
+# DESCRIPTIONS AND TEMPLATES
 STYLE_DESCRIPTIONS = {
-    "detailed": "comprehensive explanations with specific learning outcomes and measurable competencies",
-    "concise": "brief, focused descriptions highlighting key achievements and skills",
-    "technical": "precise technical terminology with specific tools, technologies, and methodologies",
-    "narrative": "storytelling approach describing the learning journey and practical applications",
-    "professional": "formal business language emphasizing career relevance and industry standards"
+    "Professional": "Use formal, business-oriented language emphasizing industry standards and career advancement.",
+    "Academic": "Use scholarly language emphasizing learning outcomes and academic rigor.",
+    "Industry": "Use sector-specific terminology focusing on job-readiness and practical applications.",
+    "Technical": "Use precise technical language with emphasis on tools and measurable outcomes.",
+    "Creative": "Use engaging language highlighting innovation and problem-solving."
 }
 
-# TONE_DESCRIPTIONS  
 TONE_DESCRIPTIONS = {
-    "formal": "professional academic language with structured, objective descriptions",
-    "engaging": "dynamic, motivational language that inspires and celebrates achievement",
-    "authoritative": "confident, expert tone establishing credibility and institutional prestige",
-    "accessible": "clear, jargon-free language that's easily understood by diverse audiences",
-    "inspiring": "uplifting, empowering language that motivates continued learning and growth"
+    "Authoritative": "Confident, definitive tone with institutional credibility.",
+    "Encouraging": "Motivating, supportive tone inspiring continued learning.",
+    "Detailed": "Comprehensive detail with examples and specific metrics.",
+    "Concise": "Short, direct guidance focusing on essential information.",
+    "Engaging": "Dynamic, compelling language to capture attention."
 }
 
-# CRITERION_STYLES
-CRITERION_STYLES = {
-    "specific": "detailed, measurable criteria with precise requirements and assessment methods",
-    "comprehensive": "thorough coverage of all learning aspects including knowledge, skills, and application",
-    "practical": "focus on real-world application and hands-on demonstration of competencies",
-    "academic": "scholarly approach with emphasis on theoretical understanding and critical thinking",
-    "industry": "workplace-relevant standards aligned with professional requirements and certifications"
+LEVEL_DESCRIPTIONS = {
+    "Beginner": "Target learners with minimal prior knowledge; focus on foundations.",
+    "Intermediate": "Target learners with basic familiarity; emphasize applied tasks.",
+    "Advanced": "Target learners with solid foundations; emphasize complex problem solving."
+}
+
+CRITERION_TEMPLATES = {
+    "Task-Oriented": "[Action verb], [action verb], [action verb]... (imperative commands directing learners to perform tasks)",
+    "Evidence-Based": "Learner has/can/successfully [action verb], has/can/effectively [action verb], has/can/accurately [action verb]... (focusing on demonstrated abilities and accomplishments)",
+    "Outcome-Focused": "Students will be able to [action verb], will be prepared to [action verb], will [action verb]... (future tense emphasizing expected outcomes and capabilities)"
 }
 
 # In-memory history
 badge_history: List[Dict[str, Any]] = []
+
+# RANDOM PARAMETER SELECTION FUNCTIONS
+
+def get_random_parameters(user_request) -> Dict[str, str]:
+    """Generate random parameters, but respect user-provided ones"""
+    
+    # Get random selections for empty/default parameters
+    random_params = {}
+    
+    # Badge Style - randomly select if not provided or empty
+    if not user_request.badge_style or user_request.badge_style.strip() == "":
+        random_params['badge_style'] = random.choice(list(STYLE_DESCRIPTIONS.keys()))
+    else:
+        random_params['badge_style'] = user_request.badge_style
+    
+    # Badge Tone - randomly select if not provided or empty
+    if not user_request.badge_tone or user_request.badge_tone.strip() == "":
+        random_params['badge_tone'] = random.choice(list(TONE_DESCRIPTIONS.keys()))
+    else:
+        random_params['badge_tone'] = user_request.badge_tone
+    
+    # Criterion Style - randomly select if not provided or empty
+    if not user_request.criterion_style or user_request.criterion_style.strip() == "":
+        random_params['criterion_style'] = random.choice(list(CRITERION_TEMPLATES.keys()))
+    else:
+        random_params['criterion_style'] = user_request.criterion_style
+    
+    # Badge Level - randomly select if not provided or empty
+    if not user_request.badge_level or user_request.badge_level.strip() == "":
+        random_params['badge_level'] = random.choice(list(LEVEL_DESCRIPTIONS.keys()))
+    else:
+        random_params['badge_level'] = user_request.badge_level
+    
+    return random_params
+
+def apply_regeneration_overrides(current_params: Dict[str, str], regeneration_request: Dict[str, str]) -> Dict[str, str]:
+    """Override specific parameters for regeneration"""
+    updated_params = current_params.copy()
+    
+    # Override with new random selections for specified parameters
+    if "badge_style" in regeneration_request:
+        updated_params['badge_style'] = random.choice(list(STYLE_DESCRIPTIONS.keys()))
+    
+    if "badge_tone" in regeneration_request:
+        updated_params['badge_tone'] = random.choice(list(TONE_DESCRIPTIONS.keys()))
+    
+    if "criterion_style" in regeneration_request:
+        updated_params['criterion_style'] = random.choice(list(CRITERION_TEMPLATES.keys()))
+    
+    if "badge_level" in regeneration_request:
+        updated_params['badge_level'] = random.choice(list(LEVEL_DESCRIPTIONS.keys()))
+    
+    return updated_params
+
+def process_course_input(course_input: str) -> str:
+    """Process course input to handle multiple courses or complex content"""
+    
+    # Check if it contains multiple courses (separated by common delimiters)
+    course_separators = ['\n', ';', '|', '&', ' and ', ' + ', '//']
+    
+    # Count potential separators
+    separator_found = None
+    for sep in course_separators:
+        if sep in course_input and course_input.count(sep) >= 1:
+            separator_found = sep
+            break
+    
+    if separator_found:
+        courses = [course.strip() for course in course_input.split(separator_found) if course.strip()]
+        if len(courses) > 1:
+            return f"multiple courses: {', '.join(courses)}"
+    
+    return course_input
 
 # HELPER FUNCTIONS
 
@@ -749,12 +825,25 @@ def _pick_palette_color(palette):
         return random.choice(palette)
     return _rand_hex()
 
+def calculate_font_size(text: str, base_size: int) -> int:
+    """Calculate font size based on text length within spec limits"""
+    if not text:
+        return base_size
+    
+    # Scale down for longer text, stay within 40-50 range
+    if len(text) > 30:
+        return max(base_size - 8, 40)
+    elif len(text) > 20:
+        return max(base_size - 4, 40)
+    
+    return min(base_size, 50)
+
 def generate_badge_config(
     meta: dict,
     seed: int | None = None,
     logo_path: str = "../assets/logos/wgu_logo.png",
 ):
-    """Generate text-based badge configuration"""
+    """Generate text-based badge configuration following spec"""
     if seed is not None:
         random.seed(seed)
 
@@ -762,8 +851,10 @@ def generate_badge_config(
     cool = ["#118AB2", "#06D6A0", "#26547C", "#2A9D8F", "#457B9D", "#00B4D8"]
     neutrals = ["#000000", "#222222", "#333333", "#555555", "#777777", "#999999"]
 
+    # Fixed canvas per spec
     canvas = {"width": 600, "height": 600}
 
+    # Background layer (z: 0-9)
     background_layer = {
         "type": "BackgroundLayer",
         "mode": "solid",
@@ -771,9 +862,9 @@ def generate_badge_config(
         "z": 0,
     }
 
+    # Shape layer (z: 10-19)
     shape = random.choice(["hexagon", "circle", "rounded_rect"])
-    z_shape = random.randint(10, 19)
-
+    
     fill_mode = random.choice(["solid", "gradient"])
     if fill_mode == "solid":
         fill = {
@@ -792,17 +883,24 @@ def generate_badge_config(
             "vertical": True,
         }
 
+    # Border (optional per spec)
     if random.random() < 0.6:
         border = {
             "color": _pick_palette_color(neutrals + cool + warm),
             "width": random.randint(1, 6),
         }
     else:
-        border = {"color": None, "width": 0}
+        border = {
+            "color": None,
+            "width": 0
+        }
 
-    if shape in ("hexagon", "circle"):
+    # Shape-specific params per spec
+    if shape == "hexagon":
         params = {"radius": 250}
-    else:
+    elif shape == "circle":
+        params = {"radius": 250}
+    else:  # rounded_rect
         params = {
             "radius": random.randint(0, 100),
             "width": 450,
@@ -815,64 +913,69 @@ def generate_badge_config(
         "fill": fill,
         "border": border,
         "params": params,
-        "z": z_shape,
+        "z": random.randint(10, 19),
     }
 
-    z_logo = random.randint(20, 29)
+    # Logo layer (z: 20-29)
     logo_layer = {
         "type": "LogoLayer",
         "path": logo_path,
         "size": {"dynamic": True},
         "position": {"x": "center", "y": "dynamic"},
-        "z": z_logo,
+        "z": random.randint(20, 29),
     }
 
-    n_text_layers = random.randint(1, 3)
-
-    def _clip(s, max_len=64):
+    # Smart text processing - always include subtitle for text layouts
+    def _clip_smart(s, max_len=40):
         if not s:
             return ""
         s = str(s).strip()
         if len(s) <= max_len:
             return s
-        return s[: max_len - 1] + "…"
+        return s[:max_len-1] + "…"
 
-    texts = []
-    title = _clip(meta.get("badge_title") or "Badge Title", 40)
-    subtitle = _clip(meta.get("subtitle") or "", 40)
-    extra = _clip(meta.get("extra_text") or "", 40)
+    title = _clip_smart(meta.get("badge_title") or "Badge Title")
+    subtitle = _clip_smart(meta.get("subtitle") or "Certified Achievement")
+    extra = _clip_smart(meta.get("extra_text") or "")
 
-    texts.append(title)
-    if n_text_layers >= 2:
-        texts.append(subtitle or "Certified Achievement")
-    if n_text_layers == 3:
-        texts.append(extra or "Advanced")
+    # For text layouts, always include at least title + subtitle
+    texts = [title, subtitle]
+    if extra and len(title) <= 20 and len(subtitle) <= 20:  # Add third only if others are short
+        texts.append(extra)
 
-    z_pool = list(range(30, 40))
-    random.shuffle(z_pool)
-    z_texts = sorted(z_pool[:n_text_layers])
-
+    # Text layers (z: 30-39)
     text_layers = []
+    z_values = sorted(random.sample(range(30, 40), len(texts)))
+    
     for idx, txt in enumerate(texts):
-        font_size = random.randint(42, 50) if idx == 0 else random.randint(40, 48)
+        if not txt:
+            continue
+            
+        # Font size within spec (40-50)
+        base_size = 48 if idx == 0 else 44 if idx == 1 else 40
+        font_size = calculate_font_size(txt, base_size)
+        
         color = _pick_palette_color(neutrals if idx == 0 else neutrals + cool + warm)
-        wrap = {
-            "dynamic": True,
-            "line_gap": random.randint(4, 7),
-        }
-        tl = {
+        
+        # Line gap within spec (4-7)
+        line_gap = random.randint(4, 7)
+        
+        text_layer = {
             "type": "TextLayer",
-            "text": txt or "Badge",
+            "text": txt,
             "font": {
                 "path": "/System/Library/Fonts/Arial.ttf",
                 "size": font_size,
             },
             "color": color,
             "align": {"x": "center", "y": "dynamic"},
-            "wrap": wrap,
-            "z": z_texts[idx],
+            "wrap": {
+                "dynamic": True,
+                "line_gap": line_gap,
+            },
+            "z": z_values[idx],
         }
-        text_layers.append(tl)
+        text_layers.append(text_layer)
 
     config = {
         "canvas": canvas,
@@ -1110,66 +1213,67 @@ async def generate_icon_image_config(badge_name: str, badge_description: str,
     }
 
 async def generate_badge_metadata_async(request) -> dict:
-    """Generate badge metadata using the language model."""
+    """Generate badge metadata with random parameter selection"""
     
-    style_desc = STYLE_DESCRIPTIONS.get(request.badge_style, "comprehensive and detailed")
-    tone_desc = TONE_DESCRIPTIONS.get(request.badge_tone, "professional and engaging")
-    criterion_desc = CRITERION_STYLES.get(request.criterion_style, "specific and measurable")
+    # Get random parameters for empty fields
+    random_params = get_random_parameters(request)
     
-    level_context = ""
-    if request.badge_level:
-        level_mapping = {
-            "beginner": "introductory level suitable for newcomers",
-            "intermediate": "intermediate level building on foundational knowledge", 
-            "advanced": "advanced level requiring significant expertise"
-        }
-        level_context = f"This badge represents {level_mapping.get(request.badge_level, request.badge_level)} achievement."
+    # Process course input to handle multiple courses
+    processed_course_input = process_course_input(request.course_input)
     
-    institution_context = ""
+    style_desc = STYLE_DESCRIPTIONS.get(random_params['badge_style'], "Use clear, comprehensive language with specific examples.")
+    tone_desc = TONE_DESCRIPTIONS.get(random_params['badge_tone'], "Professional and engaging tone.")
+    level_desc = LEVEL_DESCRIPTIONS.get(random_params['badge_level'], "Appropriate for learners with basic knowledge.")
+    criterion_desc = CRITERION_TEMPLATES.get(random_params['criterion_style'], "Clear, actionable criteria.")
+    
+    system_msg = "You are a badge metadata generator. Return only valid JSON with exact schema: {\"badge_name\": \"string\", \"badge_description\": \"string\", \"criteria\": {\"narrative\": \"string\"}}"
+    
+    user_content = f"""Create a unique badge for: {processed_course_input}
+
+IMPORTANT: If this covers multiple courses or complex content, create a comprehensive badge that encompasses all areas while maintaining focus and clarity.
+
+Style: {style_desc}
+Tone: {tone_desc}
+Level: {level_desc}
+Criterion Format: {criterion_desc}
+
+Badge Name: Generate a creative and memorable name that captures the essence of the course(s). For multiple courses, create a unifying theme.
+Badge Description: Provide a comprehensive description covering competencies mastered, technical tools, real-world applications, assessment rigor, employer value, and transferable skills. For multiple courses, integrate all subject areas cohesively.
+Criteria: Focus on specific learning requirements, assessment methods, practical experiences, and evidence standards that span all course content."""
+
     if request.institution:
-        institution_context = f"This badge is issued by {request.institution}."
-    
-    custom_context = ""
+        user_content += f"\n\nIMPORTANT: This badge MUST be issued by {request.institution}. Include {request.institution} in the badge description and emphasize the institution's credibility, reputation, and educational standards throughout the description."
+        
+    user_content += f"\n\nTarget Level: {random_params['badge_level']} - {level_desc}"
+
     if request.custom_instructions:
-        custom_context = f"Additional requirements: {request.custom_instructions}"
+        user_content += f"\n\nAdditional Requirements: {request.custom_instructions}"
+
+    prompt = f"<|system|>{system_msg}<|end|>\n<|user|>{user_content}<|end|>\n<|assistant|>"
     
-    prompt = f"""Create a professional Open Badge v3.0 metadata for the following course:
-
-Course Content: {request.course_input}
-
-{level_context}
-{institution_context}
-{custom_context}
-
-Badge Style: {style_desc}
-Badge Tone: {tone_desc}
-Criteria Style: {criterion_desc}
-
-Generate a JSON response with the following structure:
-{{
-    "badge_name": "Concise, impactful title (3-8 words)",
-    "badge_description": "Clear description highlighting key achievements and competencies",
-    "criteria": {{
-        "narrative": "Detailed criteria describing what learners must demonstrate to earn this badge"
-    }}
-}}
-
-Ensure the badge name is professional and concise. The description should be engaging and highlight the practical value of the achievement."""
-
     response = await call_model_async(prompt)
     result = extract_json_from_response(response)
     result["raw_model_output"] = response
+    result["selected_parameters"] = random_params
+    result["processed_course_input"] = processed_course_input
+    
     return result
 
 # PYDANTIC MODELS
 
 class BadgeRequest(BaseModel):
-    course_input: str = Field(..., description="Course content or description to generate badge from")
-    badge_style: str = Field(default="detailed", description="Style of badge generation")
-    badge_tone: str = Field(default="formal", description="Tone for badge content")
-    criterion_style: str = Field(default="specific", description="Style for criteria generation")
+    course_input: str = Field(..., description="Course content or description to generate badge from. Can be multiple courses separated by newlines, semicolons, or 'and'")
+    badge_style: str = Field(default="", description="Style of badge generation")
+    badge_tone: str = Field(default="", description="Tone for badge content")
+    criterion_style: str = Field(default="", description="Style for criteria generation")
     custom_instructions: Optional[str] = Field(default=None, description="Additional custom requirements")
-    badge_level: Optional[str] = Field(default=None, description="Badge difficulty level")
+    badge_level: str = Field(default="", description="Badge difficulty level")
+    institution: Optional[str] = Field(default=None, description="Issuing institution name")
+
+class RegenerationRequest(BaseModel):
+    course_input: str = Field(..., description="Original course content")
+    regenerate_parameters: List[str] = Field(..., description="List of parameters to regenerate: ['badge_style', 'badge_tone', 'criterion_style', 'badge_level']")
+    custom_instructions: Optional[str] = Field(default=None, description="Additional custom requirements")
     institution: Optional[str] = Field(default=None, description="Issuing institution name")
 
 class BadgeValidated(BaseModel):
@@ -1179,10 +1283,9 @@ class BadgeValidated(BaseModel):
     raw_model_output: str
 
 class BadgeResponse(BaseModel):
-    name: str
-    description: str
-    criteria: str
-    imageConfig: Dict[str, Any]
+    credentialSubject: Dict[str, Any]
+    imageConfig: Dict[str, Any] 
+    badge_id: int
 
 # API ENDPOINTS
 
@@ -1212,9 +1315,10 @@ Return JSON format:
 
 @app.post("/generate_badge", response_model=BadgeResponse)
 async def generate_badge(request: BadgeRequest):
+    """Generate a single badge with random parameter selection"""
     start_time = time.time()
     try:
-        # Generate badge metadata first
+        # Generate badge metadata with random parameters
         badge_json = await generate_badge_metadata_async(request)
 
         try:
@@ -1228,12 +1332,11 @@ async def generate_badge(request: BadgeRequest):
             logger.warning("Badge validation failed: %s", ve)
             raise HTTPException(status_code=502, detail=f"Badge schema validation error: {ve}")
 
-        # Decide image type upfront
+        # Generate image configuration with random selection
         image_type = random.choice(["text_overlay", "icon_based"])
         logger.info(f"Selected image type: {image_type}")
 
         if image_type == "icon_based":
-            # Generate icon-based configuration
             icon_suggestions = await get_icon_suggestions_for_badge(
                 badge_name=validated.badge_name,
                 badge_description=validated.badge_description,
@@ -1251,7 +1354,6 @@ async def generate_badge(request: BadgeRequest):
             image_config = image_config_wrapper.get("config", {})
             
         else:  # text_overlay
-            # Generate text-based configuration
             optimized_text = await optimize_badge_text({
                 "badge_name": validated.badge_name,
                 "badge_description": validated.badge_description,
@@ -1267,39 +1369,47 @@ async def generate_badge(request: BadgeRequest):
             
             image_config = image_config_wrapper.get("config", {})
 
-        # Format criteria as string
-        criteria_text = ""
+        # Generate badge ID
+        badge_id = random.randint(100000, 999999)
+        
+        # Extract narrative from criteria
+        criteria_narrative = ""
         if isinstance(validated.criteria, dict):
-            criteria_parts = []
-            for key, value in validated.criteria.items():
-                if isinstance(value, list):
-                    criteria_parts.append(f"{key}: {'; '.join(value)}")
-                else:
-                    criteria_parts.append(f"{key}: {value}")
-            criteria_text = " | ".join(criteria_parts)
-        else:
-            criteria_text = str(validated.criteria)
+            criteria_narrative = validated.criteria.get("narrative", "")
 
-        # Create the response
+        # Create the response in the required format
         result = BadgeResponse(
-            name=validated.badge_name,
-            description=validated.badge_description,
-            criteria=criteria_text,
-            imageConfig=image_config
+            credentialSubject={
+                "achievement": {
+                    "criteria": {
+                        "narrative": criteria_narrative
+                    },
+                    "description": validated.badge_description,
+                    "image": {
+                        "id": f"https://example.com/achievements/badge_{badge_id}/image"
+                    },
+                    "name": validated.badge_name
+                }
+            },
+            imageConfig=image_config,
+            badge_id=badge_id
         )
 
-        # Store in history
+        # Store in history (keep selected_parameters in history for logging/debugging)
         history_entry = {
             "id": len(badge_history) + 1,
             "timestamp": datetime.now().isoformat(),
             "course_input": (request.course_input[:100] + "...") if len(request.course_input) > 100 else request.course_input,
-            "badge_style": request.badge_style,
-            "badge_tone": request.badge_tone,
-            "criterion_style": request.criterion_style,
+            "processed_course_input": badge_json.get("processed_course_input", request.course_input),
+            "user_badge_style": request.badge_style,
+            "user_badge_tone": request.badge_tone,
+            "user_criterion_style": request.criterion_style,
+            "user_badge_level": request.badge_level,
             "custom_instructions": request.custom_instructions,
-            "badge_level": request.badge_level,
             "institution": request.institution,
             "selected_image_type": image_type,
+            "selected_parameters": badge_json.get("selected_parameters", {}),
+            "badge_id": badge_id,
             "generation_time": time.time() - start_time
         }
         badge_history.append(history_entry)
@@ -1307,7 +1417,8 @@ async def generate_badge(request: BadgeRequest):
         if len(badge_history) > 50:
             badge_history.pop(0)
 
-        logger.info(f"Generated badge '{validated.badge_name}' with {image_type} configuration")
+        selected_params = badge_json.get("selected_parameters", {})
+        logger.info(f"Generated badge ID {badge_id}: '{validated.badge_name}' with parameters: {selected_params}")
         return result
 
     except HTTPException:
@@ -1315,6 +1426,120 @@ async def generate_badge(request: BadgeRequest):
     except Exception as e:
         logger.exception("Unexpected error in /generate_badge: %s", e)
         raise HTTPException(status_code=500, detail=f"Badge generation error: {str(e)}")
+
+@app.post("/regenerate_badge", response_model=BadgeResponse)
+async def regenerate_badge(request: RegenerationRequest):
+    """Regenerate badge with specific parameter overrides"""
+    start_time = time.time()
+    try:
+        # Create a mock request object for consistency
+        mock_request = BadgeRequest(
+            course_input=request.course_input,
+            badge_style="",  # Will be randomly overridden
+            badge_tone="",   # Will be randomly overridden
+            criterion_style="",  # Will be randomly overridden
+            badge_level="",  # Will be randomly overridden
+            custom_instructions=request.custom_instructions,
+            institution=request.institution
+        )
+        
+        # Get current random parameters
+        current_params = get_random_parameters(mock_request)
+        
+        # Apply regeneration overrides
+        regeneration_map = {param: True for param in request.regenerate_parameters}
+        updated_params = apply_regeneration_overrides(current_params, regeneration_map)
+        
+        # Update mock request with new parameters
+        mock_request.badge_style = updated_params['badge_style']
+        mock_request.badge_tone = updated_params['badge_tone']
+        mock_request.criterion_style = updated_params['criterion_style']
+        mock_request.badge_level = updated_params['badge_level']
+        
+        # Generate badge with updated parameters
+        badge_json = await generate_badge_metadata_async(mock_request)
+
+        try:
+            validated = BadgeValidated(
+                badge_name=badge_json.get("badge_name", ""),
+                badge_description=badge_json.get("badge_description", ""),
+                criteria=badge_json.get("criteria", {}),
+                raw_model_output=badge_json.get("raw_model_output", "")
+            )
+        except ValidationError as ve:
+            logger.warning("Badge validation failed: %s", ve)
+            raise HTTPException(status_code=502, detail=f"Badge schema validation error: {ve}")
+
+        # Generate image configuration
+        image_type = random.choice(["text_overlay", "icon_based"])
+        
+        if image_type == "icon_based":
+            icon_suggestions = await get_icon_suggestions_for_badge(
+                badge_name=validated.badge_name,
+                badge_description=validated.badge_description,
+                custom_instructions=request.custom_instructions or "",
+                top_k=3
+            )
+            
+            image_config_wrapper = await generate_icon_image_config(
+                validated.badge_name,
+                validated.badge_description,
+                icon_suggestions,
+                request.institution or ""
+            )
+            
+            image_config = image_config_wrapper.get("config", {})
+            
+        else:  # text_overlay
+            optimized_text = await optimize_badge_text({
+                "badge_name": validated.badge_name,
+                "badge_description": validated.badge_description,
+                "institution": request.institution or ""
+            })
+            
+            image_config_wrapper = await generate_text_image_config(
+                validated.badge_name,
+                validated.badge_description,
+                optimized_text,
+                request.institution or ""
+            )
+            
+            image_config = image_config_wrapper.get("config", {})
+
+        # Generate badge ID
+        badge_id = random.randint(100000, 999999)
+        
+        # Extract narrative from criteria
+        criteria_narrative = ""
+        if isinstance(validated.criteria, dict):
+            criteria_narrative = validated.criteria.get("narrative", "")
+
+        # Create the response in the required format
+        result = BadgeResponse(
+            credentialSubject={
+                "achievement": {
+                    "criteria": {
+                        "narrative": criteria_narrative
+                    },
+                    "description": validated.badge_description,
+                    "image": {
+                        "id": f"https://example.com/achievements/badge_{badge_id}/image"
+                    },
+                    "name": validated.badge_name
+                }
+            },
+            imageConfig=image_config,
+            badge_id=badge_id
+        )
+
+        logger.info(f"Regenerated badge ID {badge_id} with overridden parameters: {request.regenerate_parameters}")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Unexpected error in /regenerate_badge: %s", e)
+        raise HTTPException(status_code=500, detail=f"Badge regeneration error: {str(e)}")
 
 @app.get("/badge_history")
 async def get_badge_history():
@@ -1334,7 +1559,8 @@ async def get_styles():
     return {
         "badge_styles": STYLE_DESCRIPTIONS,
         "badge_tones": TONE_DESCRIPTIONS,
-        "criterion_styles": CRITERION_STYLES
+        "criterion_styles": CRITERION_TEMPLATES,
+        "badge_levels": LEVEL_DESCRIPTIONS
     }
 
 @app.get("/health")
