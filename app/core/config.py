@@ -41,6 +41,11 @@ class Config:
     DEFAULT_TOP_K: int = 30
     DEFAULT_REPEAT_PENALTY: float = 1.02
     DEFAULT_NUM_CTX: int = 6144
+    # Concurrency Configuration
+    MAX_CONCURRENT_REQUESTS: int = 4
+    ENABLE_MULTIPLEXING: bool = True
+    CONNECTION_POOL_SIZE: int = 10
+    KEEPALIVE_TIMEOUT: float = 30.0
     
     @classmethod
     def load_system_prompt(cls) -> str:

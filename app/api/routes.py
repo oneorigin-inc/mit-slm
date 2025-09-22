@@ -4,7 +4,7 @@ API routes for DCC Model API
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from app.models.schemas import GenerateRequest, GenerateResponse, HealthResponse
-from app.services.ollama_service import OllamaService
+from app.services.ollama_service import ollama_service
 from app.core.logging_config import get_logger
 import json
 
@@ -12,17 +12,17 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-def get_ollama_service() -> OllamaService:
+def get_ollama_service():
     """Dependency to get Ollama service instance"""
-    return OllamaService()
+    return ollama_service
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health_check(service: OllamaService = Depends(get_ollama_service)):
+async def health_check():
     """Health check endpoint"""
     try:
         logger.info("Health check requested")
-        health_data = await service.health_check()
+        health_data = await ollama_service.health_check()
         
         return HealthResponse(**health_data)
         
@@ -32,16 +32,13 @@ async def health_check(service: OllamaService = Depends(get_ollama_service)):
 
 
 @router.post("/generate", response_model=GenerateResponse)
-async def generate(
-    request: GenerateRequest,
-    service: OllamaService = Depends(get_ollama_service)
-):
+async def generate(request: GenerateRequest):
     """Generate badge metadata from course content"""
     try:
         logger.info(f"Generate request received - Content length: {len(request.content)}")
         
         # Generate response
-        result = await service.generate(
+        result = await ollama_service.generate(
             content=request.content,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
@@ -59,17 +56,14 @@ async def generate(
 
 
 @router.post("/generate/stream")
-async def generate_stream(
-    request: GenerateRequest,
-    service: OllamaService = Depends(get_ollama_service)
-):
+async def generate_stream(request: GenerateRequest):
     """Generate badge metadata with streaming response"""
     try:
         logger.info(f"Streaming generate request received - Content length: {len(request.content)}")
         
         async def generate_stream_response():
             try:
-                async for chunk in service.generate_stream(
+                async for chunk in ollama_service.generate_stream(
                     content=request.content,
                     temperature=request.temperature,
                     max_tokens=request.max_tokens,
