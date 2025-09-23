@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_config
 from app.core.logging_config import setup_logging
 from app.api.routes import router
+import uvicorn
 
 # Setup logging
 logger = setup_logging()
@@ -41,12 +42,12 @@ async def root():
         "version": config.API_VERSION,
         "docs": "/docs",
         "health": "/api/v1/health",
-        "generate": "/api/v1/generate"
+        "generate_badge_suggestions": "/api/v1/generate-badge-suggestions",
+        "generate_badge_suggestions_stream": "/api/v1/generate-badge-suggestions/stream"
     }
 
 
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run(
         "app.main:app",
         host=config.API_HOST,

@@ -11,6 +11,12 @@ services:
     environment:
       - OLLAMA_HOST=0.0.0.0
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   api:
     build: .
@@ -23,8 +29,12 @@ services:
     environment:
       - ENVIRONMENT=production
       - OLLAMA_URL=http://ollama:11434
+      - API_HOST=0.0.0.0
+      - API_PORT=8001
+      - LOG_LEVEL=INFO
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health"]

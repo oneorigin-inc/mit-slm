@@ -1,4 +1,4 @@
-# DCC Model API - Git Ignore File
+# DCC Model API - Production Git Ignore File
 
 # Model files (large binary files)
 model/
@@ -11,9 +11,24 @@ config/ModelFile1.txt
 config/SYSTEM_PROMPT.txt
 config/*.txt
 
-# Logs
+# Logs and runtime files
 logs/
 *.log
+*.pid
+*.sock
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Development and debug files
+debug_*.py
+test_*.py
+*_test.py
+simple_*.py
 
 # Python
 __pycache__/

@@ -1,5 +1,5 @@
 # Ollama Service with Multiplexing Support
-# This is the main Ollama service implementation with HTTP/2 multiplexing for optimal performance
+# This is the service layer for external Ollama API integration with HTTP/2 multiplexing
 
 import asyncio
 import json
@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 
 class OllamaService:
-    """Main Ollama service with HTTP/2 multiplexing support for handling multiple concurrent requests"""
+    """Service layer for external Ollama API integration with HTTP/2 multiplexing support"""
     
     _instance = None
     _lock = Lock()

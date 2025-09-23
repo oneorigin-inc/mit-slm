@@ -1,9 +1,10 @@
-# DCC Model API - Production Ready with HTTP/2 Multiplexing
+# DCC Model API - MCS Architecture with HTTP/2 Multiplexing
 
-A production-ready API for generating Open Badges 3.0 compliant metadata using local AI models with Ollama. Features HTTP/2 multiplexing for optimal concurrent request handling.
+A production-ready API for generating Open Badges 3.0 compliant metadata using local AI models with Ollama. Built with **MCS (Model-Controller-Services) architecture** and features HTTP/2 multiplexing for optimal concurrent request handling.
 
 ## 🚀 Key Features
 
+- **MCS Architecture**: Clean separation of concerns with Model-Controller-Services pattern
 - **HTTP/2 Multiplexing**: Handle 4 concurrent requests simultaneously
 - **Connection Pooling**: Efficient resource utilization with keep-alive connections
 - **Streaming Responses**: Real-time generation with Server-Sent Events
@@ -27,7 +28,23 @@ DCC-model-backend/
 ├── config/                                   # Place your configuration files here
 │   ├── ModelFile1.txt                        # Modelfile for Ollama
 │   └── SYSTEM_PROMPT.txt                     # System prompt for the API
-├── app/                                      # API application code
+├── app/                                      # MCS Application code
+│   ├── main.py                              # Application entry point
+│   ├── controllers/                         # Controllers layer
+│   │   ├── badge_controller.py             # Badge generation controller
+│   │   ├── health_controller.py            # Health check controller
+│   │   └── base_controller.py              # Base controller class
+│   ├── models/                              # Models layer
+│   │   ├── badge_model.py                  # Badge business logic
+│   │   ├── schemas.py                      # Pydantic data models
+│   │   └── base_model.py                   # Base model class
+│   ├── services/                            # Services layer
+│   │   └── ollama_service.py               # External API integration
+│   ├── api/                                 # API routes
+│   │   └── routes.py                       # FastAPI routes
+│   └── core/                                # Core configuration
+│       ├── config.py                       # Application configuration
+│       └── logging_config.py               # Logging configuration
 ├── scripts/                                  # Production scripts
 │   ├── start.bat                            # Windows startup script
 │   ├── start.ps1                            # PowerShell startup script (recommended)
@@ -35,19 +52,41 @@ DCC-model-backend/
 │   ├── stop.bat                             # Windows stop script
 │   └── stop.sh                              # Linux/macOS stop script
 ├── examples/                                 # Frontend examples
-│   ├── demo.html                            # Main demo with concurrent requests
-│   ├── streaming-frontend.html              # HTML/JavaScript example
-│   └── streaming-react-component.jsx        # React component example
+│   └── demo.html                            # Simple demo interface
+├── tests/                                    # Test files
+│   └── test_api.py                          # API tests
 ├── docker-compose.yml                       # Docker configuration
 ├── Dockerfile                               # API container definition
 └── requirements.txt                         # Python dependencies
+```
+
+## 🏗️ MCS Architecture
+
+This API follows the **Model-Controller-Services (MCS)** architectural pattern for clean separation of concerns:
+
+### **Controllers Layer** (`app/controllers/`)
+- **BadgeController**: Handles badge generation requests and response formatting
+- **HealthController**: Manages health check endpoints and response formatting
+- **BaseController**: Common controller functionality and response formatting
+
+### **Models Layer** (`app/models/`)
+- **BadgeModel**: Business logic for badge generation
+- **Schemas**: Pydantic data models for validation
+- **BaseModel**: Common model functionality
+
+### **Services Layer** (`app/services/`)
+- **OllamaService**: External API integration with HTTP/2 multiplexing
+
+### **Request Flow**
+```
+HTTP Request → Controller (Request Handling + Response Formatting) → Model (Business Logic) → Service (External API) → HTTP Response
 ```
 
 ## 🚀 Quick Start
 
 ### One-Command Setup
 
-```bash
+   ```bash
 # Windows (PowerShell) - Recommended
 .\scripts\start.ps1
 
@@ -79,7 +118,7 @@ scripts\start.bat
 
 #### Step 2: Start Services
 
-```bash
+   ```bash
 # Start Ollama service
 docker-compose up ollama -d
 
@@ -232,12 +271,12 @@ curl http://localhost:8000/api/tags
 ### Generate Badge
 ```bash
 # Non-streaming
-curl -X POST http://localhost:8001/api/v1/generate \
+curl -X POST http://localhost:8001/api/v1/generate-badge-suggestions \
   -H "Content-Type: application/json" \
   -d '{"content": "Python programming course"}'
 
 # Streaming
-curl -X POST http://localhost:8001/api/v1/generate/stream \
+curl -X POST http://localhost:8001/api/v1/generate-badge-suggestions/stream \
   -H "Content-Type: application/json" \
   -d '{"content": "Python programming course"}'
 ```
@@ -348,7 +387,7 @@ docker exec ollama-server ls -la /models/MIT_OB_Phi-4-mini-instruct.Q4_K_M.gguf
 docker-compose logs api | grep -i stream
 
 # Test streaming endpoint directly
-curl -X POST http://localhost:8001/api/v1/generate/stream \
+curl -X POST http://localhost:8001/api/v1/generate-badge-suggestions/stream \
   -H "Content-Type: application/json" \
   -d '{"content": "test"}'
 ```
