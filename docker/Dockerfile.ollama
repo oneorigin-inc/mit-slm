@@ -1,0 +1,11 @@
+FROM ollama/ollama:latest
+
+# Copy model files
+COPY models/ /models/
+
+# Set working directory
+WORKDIR /models
+
+# Expose Ollama port
+EXPOSE 11434
+

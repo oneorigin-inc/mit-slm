@@ -1,5 +1,13 @@
-{
-  "icons": [
+import json
+import logging
+from typing import Dict, Any, List
+from app.utils.similarity import calculate_similarity
+from app.services.text_processor import preprocess_text
+
+logger = logging.getLogger(__name__)
+
+# Icons data - will be populated when JSON file is available
+ICONS_DATA =[
     {
       "name": "atom.png",
       "display_name": "Atom",
@@ -11,7 +19,7 @@
         "Chemistry course completion",
         "Physics excellence",
         "Research participation",
-          "Lab work proficiency"
+        "Lab work proficiency"
       ]
     },
     {
@@ -505,4 +513,107 @@
       ]
     }
   ]
+
+
+# Basic icon fallback for when JSON not loaded
+ICON_KEYWORDS = {
+    "code.png": ["programming", "coding", "software", "development", "script", "algorithm"],
+    "atom.png": ["science", "research", "lab", "study", "chemistry", "physics"],
+    "leadership.png": ["leadership", "manage", "team", "lead", "guide", "organize"],
+    "calculator.png": ["math", "calculate", "number", "statistic", "arithmetic"],
+    "color-palette.png": ["art", "design", "creative", "visual", "graphics"],
+    "trophy.png": ["achievement", "winner", "champion", "success", "excellence"],
+    "graduation-cap.png": ["graduation", "academic", "education", "degree"],
+    "brain.png": ["intelligence", "thinking", "cognitive", "psychology"],
+    "gear.png": ["engineering", "mechanical", "technical", "system"],
+    "shield.png": ["security", "protection", "safety", "cybersecurity"]
 }
+
+def load_icons_data(json_file_path: str):
+    """Load icons data from JSON file"""
+    global ICONS_DATA
+    try:
+        with open(json_file_path, 'r', encoding='utf-8') as f:
+            ICONS_DATA = json.load(f)
+        print(f"✓ Loaded {len(ICONS_DATA)} icons from {json_file_path}")
+    except FileNotFoundError:
+        print(f"⚠ Icons file not found: {json_file_path}, using keyword fallback")
+    except json.JSONDecodeError as e:
+        print(f"⚠ Invalid JSON in icons file: {e}, using keyword fallback")
+    except Exception as e:
+        print(f"⚠ Error loading icons: {e}, using keyword fallback")
+
+async def get_icon_suggestions_for_badge(
+    badge_name: str,
+    badge_description: str,
+    custom_instructions: str = "",
+    top_k: int = 3
+) -> Dict[str, Any]:
+    """Get icon suggestions using TF-IDF similarity when ICONS_DATA is available, else keyword matching"""
+    combined_text = f"{badge_name} {badge_description} {custom_instructions}"
+    
+    if ICONS_DATA:
+        # Use TF-IDF similarity with full icon data
+        processed_query = preprocess_text(combined_text)
+        
+        similarities = []
+        for icon in ICONS_DATA:
+            # Combine description and keywords for matching
+            icon_text = f"{icon.get('description', '')} {' '.join(icon.get('keywords', []))}"
+            similarity = calculate_similarity(processed_query, icon_text)
+            similarities.append({
+                "name": icon["name"],
+                "display_name": icon.get("display_name", icon["name"]),
+                "description": icon.get("description", ""),
+                "category": icon.get("category", ""),
+                "similarity_score": similarity
+            })
+        
+        # Sort by similarity and get top suggestions
+        similarities.sort(key=lambda x: x["similarity_score"], reverse=True)
+        
+        return {
+            "suggested_icon": similarities[0] if similarities else {
+                "name": "trophy.png", 
+                "display_name": "Trophy",
+                "description": "Default achievement icon", 
+                "similarity_score": 0.5
+            },
+            "alternatives": similarities[1:top_k] if len(similarities) > 1 else [],
+            "matching_method": "tfidf_similarity",
+            "total_icons_available": len(ICONS_DATA)
+        }
+    
+    else:
+        # Fallback to keyword matching
+        combined_text_lower = combined_text.lower()
+        
+        # Score icons based on keyword matches
+        scores = {}
+        for icon, keywords in ICON_KEYWORDS.items():
+            score = sum(1 for keyword in keywords if keyword in combined_text_lower)
+            if score > 0:
+                scores[icon] = score
+        
+        # Get top suggestions
+        sorted_icons = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        
+        if sorted_icons:
+            suggested = sorted_icons[0][0]
+            alternatives = [{"name": icon, "similarity_score": score/10} for icon, score in sorted_icons[1:top_k]]
+        else:
+            suggested = "trophy.png"
+            alternatives = [{"name": "goal.png", "similarity_score": 0.5}]
+        
+        return {
+            "suggested_icon": {
+                "name": suggested,
+                "display_name": suggested.replace('.png', '').title(),
+                "description": f"Contextually selected icon for {badge_name}",
+                "similarity_score": 0.7
+            },
+            "alternatives": alternatives,
+            "matching_method": "keyword_fallback",
+            "total_icons_available": len(ICON_KEYWORDS)
+        }
+

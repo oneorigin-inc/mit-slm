@@ -1,0 +1,46 @@
+services:
+  ollama:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ollama
+    image: docker-ollama                # If this image exists, use it; if not, build it
+    container_name: ollama-service
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+      - ../models:/models
+    networks:
+      - badge-network
+    restart: unless-stopped
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "ollama serve &
+       sleep 10 &&
+       ollama create phi4-chat -f /models/Modelfile &&
+       wait"
+
+  badge-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: docker-badge-api             # If this image exists, use it; if not, build it
+    container_name: badge-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../assets:/app/assets
+    environment:
+      - OLLAMA_API_URL=http://ollama:11434/api/generate
+    depends_on:
+      - ollama
+    networks:
+      - badge-network
+    restart: unless-stopped
+
+networks:
+  badge-network:
+    driver: bridge
+
+volumes:
+  ollama-data:

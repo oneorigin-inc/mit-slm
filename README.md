@@ -1,429 +1,502 @@
-pip install --no-cache-dir llama-cpp-python==0.2.77 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
-# Badge Generation API
+Here's the updated README with the `start.sh` integration:
 
-A comprehensive FastAPI-based system for generating educational badges with AI-powered content creation, intelligent icon selection, and customizable parameters.
+# Badge Generator API - Complete Documentation
+
+## Project Overview
+
+Badge Generator API is a FastAPI-based web service that generates **Open Badge v3 compliant metadata** using local Large Language Models (LLM) via Ollama integration. The system processes course descriptions and educational content to automatically create structured badge credentials following the **1EdTech Open Badges 3.0 specification** with **Verifiable Credentials Data Model v2.0** compliance.
 
 ## Features
 
-- **AI-Powered Badge Generation** - Creates unique badge names, descriptions, and criteria using Ollama/Phi-4 models
-- **Smart Parameter Selection** - Random parameter generation with user override capability  
-- **Intelligent Icon Matching** - TF-IDF similarity-based icon suggestions
-- **Flexible Image Configuration** - Supports both text overlay and icon-based badge designs
-- **Multiple Course Support** - Handles single or multiple course inputs
-- **Badge History Tracking** - Stores and manages generation history
-- **Metadata Editing** - Append custom data to existing badges
-- **Comprehensive API** - RESTful endpoints with detailed documentation
+- **Open Badge v3 Compliant**: Generates badges following 1EdTech specification with Verifiable Credentials compatibility
+- **Automated Badge Generation**: Convert course descriptions into structured Open Badge v3 metadata with cryptographic proof support
+- **LLM Integration**: Uses Ollama with local GGUF models (Phi-4, Llama, Qwen) for intelligent content generation
+- **Customizable Parameters**: Control badge style, tone, criteria format, and difficulty level
+- **JSON-LD Structure**: Standards-compliant metadata with embedded verification methods
+- **Intelligent Icon Matching**: TF-IDF similarity-based icon suggestion from curated icon library
+- **Docker Containerization**: Full Docker Compose setup with health checks and service orchestration
+- **One-Command Deployment**: Automated startup script with error handling and validation
 
-## Prerequisites
+## Technology Stack
 
-- Python 3.8+
-- Ollama installed and running
-- Finetuned Phi-4-mini-instruct model created locally using Modelfile and deployed on Ollama
+- **Backend Framework**: FastAPI 0.104.1 with Pydantic v2 validation
+- **LLM Integration**: Ollama with GGUF model support (Phi-4-mini-instruct, Qwen 2.5, Llama 3.1)
+- **Text Processing**: NLTK, scikit-learn (TF-IDF vectorization, cosine similarity)
+- **Containerization**: Docker and Docker Compose with multi-service orchestration
+- **Standards Compliance**: Open Badges 3.0, Verifiable Credentials Data Model v2.0
+- **Model Framework**: Unsloth for efficient fine-tuning, ChromaDB for embeddings
 
-## Installation
+## Project Structure
 
-### 1. Clone the Repository
+```
+~/Desktop/mit-slm-dev_v2/
+├── start.sh                        # System startup automation script
+├── app/
+│   ├── main.py                     # FastAPI application entry point
+│   ├── core/
+│   │   ├── config.py               # Settings and environment configuration
+│   │   └── logging.py              # Structured logging setup
+│   ├── models/
+│   │   ├── badge.py                # Open Badge v3 Pydantic models
+│   │   └── requests.py             # Request/Response schemas
+│   ├── services/
+│   │   ├── badge_generator.py      # Core badge generation logic
+│   │   ├── text_processor.py       # Text processing and validation
+│   │   ├── image_generator.py      # Badge visual configuration
+│   │   └── ollama_client.py        # Ollama API integration
+│   ├── routers/
+│   │   ├── badges.py               # Badge API endpoints
+│   │   └── health.py               # Health check and monitoring
+│   └── utils/
+│       ├── similarity.py           # TF-IDF similarity calculations
+│       └── icon_matcher.py         # Intelligent icon selection
+├── assets/
+│   ├── icons/                      # Curated badge icon library with metadata
+│   │   ├── icon_metadata.json      # Icon descriptions and keywords
+│   │   ├── atom.png                # Science category icons
+│   │   ├── binary-code.png         # Technology category icons
+│   │   └── [50+ categorized icons]
+│   ├── logos/                      # Institution branding assets
+│   └── fonts/                      # Typography resources
+├── models/
+│   ├── gguf/                       # Quantized GGUF model files
+│   │   └── phi-4-mini-instruct-q4_k_m.gguf
+│   └── Modelfile                   # Ollama model configuration
+├── docker/
+│   ├── Dockerfile                  # Badge API container definition
+│   ├── Dockerfile.ollama           # Ollama service container
+│   └── docker-compose.yml          # Multi-service orchestration
+├── requirements.txt                # Python dependencies
+└── README.md                       # This documentation
+```
+
+## Quick Start
+
+### Prerequisites
+
+- **Docker & Docker Compose**: Latest version with Compose v2 support
+- **System Requirements**: 8GB+ RAM, 10GB+ storage for models
+- **Network Access**: For initial model downloads and updates
+
+### One-Command Startup
+
+The fastest way to get your Badge Generator running:
+
 ```bash
-git clone <repository-url>
-cd badge-generation-api
+# Navigate to project directory
+cd "~/Desktop/mit-slm-dev_v2"
+
+# Make startup script executable (first time only)
+chmod +x start.sh
+
+# Start the complete system
+./start.sh
 ```
 
-### 2. Create Virtual Environment
+The `start.sh` script will automatically:
+- Clean up any existing containers and port conflicts
+- Start both Ollama and Badge API services using Docker Compose
+- Wait for health checks to pass
+- Verify all endpoints are responding
+- Display system status and access URLs
+
+### Expected Startup Output
+
+```
+Starting Badge Generator System...
+=================================
+Cleaning up existing services...
+Verifying ports are available...
+Starting Docker services...
+[+] Running 3/3
+ ✔ Container ollama-service      Healthy
+ ✔ Container badge-api           Started
+Badge API is healthy
+Ollama Service is healthy
+Badge API health check: PASSED
+Ollama API check: PASSED
+
+=================================
+Badge Generator System is ready!
+=================================
+Badge API: http://localhost:8000
+API Documentation: http://localhost:8000/docs
+Health Check: http://localhost:8000/health
+Ollama API: http://localhost:11434
+```
+
+## Installation and Setup
+
+### Method 1: Automated Setup (Recommended)
+
 ```bash
-python -m venv venv
+# Clone and navigate to project directory
+cd "./mit-slm-dev_v2"
 
-# On Windows:
-venv\Scripts\activate
+# Ensure model files are in place
+ls models/gguf/  # Should contain your GGUF model file
 
-# On macOS/Linux:
-source venv/bin/activate
+# Run automated startup
+chmod +x start.sh
+./start.sh
 ```
 
-### 3. Install Dependencies
+### Method 2: Manual Docker Setup
+
 ```bash
-pip install -r requirements.txt
+# Navigate to project directory
+cd "~/Desktop/mit-slm-dev_v2"
+
+# Start services manually
+docker compose -f docker/docker-compose.yml up -d
+
+# Check status
+docker compose -f docker/docker-compose.yml ps
+
+# Wait for health checks
+sleep 30
+
+# Test health
+curl http://localhost:8000/health
 ```
 
-### 4. Download NLTK Data
+## System Management
+
+### Starting the System
 ```bash
-python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords')"
+# Automated startup with error handling
+./start.sh
+
+# Alternative: Manual startup
+docker compose -f docker/docker-compose.yml up -d
 ```
 
-### 5. Setup Ollama Model
-
-Create a Modelfile for your custom Phi-4 model:
-
-```dockerfile
-# Modelfile
-FROM phi4:latest
-
-PARAMETER temperature 0.15
-PARAMETER top_p 0.8
-PARAMETER top_k 30
-PARAMETER num_predict 400
-PARAMETER repeat_penalty 1.05
-PARAMETER num_ctx 4096
-PARAMETER stop "<|end|>"
-PARAMETER stop "}\n\n"
-
-SYSTEM """You are a professional badge metadata generator specializing in educational credentials. You generate creative, industry-relevant badge names, comprehensive descriptions, and detailed criteria for learning achievements. Always return valid JSON in the exact format requested."""
-
-TEMPLATE """<|system|>
-{{ .System }}<|end|>
-<|user|>
-{{ .Prompt }}<|end|>
-<|assistant|>"""
-```
-
-### 6. Create and Run the Model
+### Monitoring the System
 ```bash
-# Create the model
-ollama create phi4-badge -f Modelfile
+# Check container status
+docker compose -f docker/docker-compose.yml ps
 
-# Verify the model is available
-ollama list
+# View real-time logs
+docker compose -f docker/docker-compose.yml logs -f
+
+# Check system health
+curl http://localhost:8000/health
+curl http://localhost:11434/api/version
 ```
 
-### 7. Update Configuration
-Update the model name in `main.py` if using a different model:
-
-```python
-MODEL_CONFIG = {
-    "model_name": "phi4-badge",  # Update this to match your model
-    "temperature": 0.15,
-    "top_p": 0.8,
-    "top_k": 30,
-    "num_predict": 400,
-    "repeat_penalty": 1.05,
-    "num_ctx": 4096,
-    "stop": ["<|end|>", "}\n\n"]
-}
-```
-
-## Running the API
-
-### Development Server
+### Stopping the System
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+# Stop all services
+docker compose -f docker/docker-compose.yml down
+
+# Stop with cleanup
+docker compose -f docker/docker-compose.yml down --volumes
 ```
 
-### Production Server
+### Restarting the System
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+# Use startup script (recommended - handles cleanup)
+./start.sh
+
+# Or manual restart
+docker compose -f docker/docker-compose.yml restart
 ```
-
-The API will be available at: `http://localhost:8000`
-
-Interactive documentation: `http://localhost:8000/docs`
 
 ## API Endpoints
 
-### 1. Generate Badge Suggestions
-**POST** `/generate-badge-suggestions`
+### Base URL
+```
+http://localhost:8000
+```
 
-Generate badges with flexible parameter control.
+### Available Endpoints
 
-**Request Body:**
+| Endpoint | Method | Description | Open Badge v3 Feature |
+|----------|--------|-------------|----------------------|
+| `/health` | GET | Service health and readiness check | System monitoring |
+| `/docs` | GET | Interactive API documentation | Development support |
+| `/api/v1/styles` | GET | Available badge parameters and configurations | Customization options |
+| `/api/v1/generate-badge-suggestions` | POST | Generate new Open Badge v3 metadata | Core badge creation |
+| `/api/v1/regenerate_badge` | POST | Modify existing badge with parameter changes | Iterative design |
+| `/api/v1/badge_history` | GET/DELETE | Manage badge generation history | Tracking and audit |
+
+## Testing with Postman
+
+### Environment Setup
+Create Postman environment with:
+```
+BASE_URL = http://localhost:8000
+```
+
+### Recommended Test Sequence
+
+#### 1. System Health Check
+- **Method**: GET
+- **URL**: `{{BASE_URL}}/health`
+- **Expected Response**: `{"status":"healthy","timestamp":"..."}`
+
+#### 2. API Documentation Access
+- **Method**: GET
+- **URL**: `{{BASE_URL}}/docs`
+- **Result**: Interactive Swagger UI for testing
+
+#### 3. Get Available Styles
+- **Method**: GET  
+- **URL**: `{{BASE_URL}}/api/v1/styles`
+- **Result**: Available badge parameters and options
+
+#### 4. Generate Basic Badge
+- **Method**: POST
+- **URL**: `{{BASE_URL}}/api/v1/generate-badge-suggestions`
+- **Headers**: `Content-Type: application/json`
+- **Body**:
 ```json
 {
-    "course_input": "Introduction to Machine Learning with Python",
-    "badge_style": "Technical",
-    "badge_tone": "Detailed", 
-    "criterion_style": "Evidence-Based",
-    "badge_level": "Advanced",
-    "custom_instructions": "Focus on practical applications",
-    "institution": "Tech University"
+  "course_input": "Python Programming Fundamentals - Variables, Functions, Loops, Object-Oriented Programming"
 }
 ```
 
-**Parameters:**
-- **course_input** (required): Course description or multiple courses
-- **badge_style**: "Professional", "Academic", "Industry", "Technical", "Creative", or "" (random)
-- **badge_tone**: "Authoritative", "Encouraging", "Detailed", "Concise", "Engaging", or "" (random)
-- **criterion_style**: "Task-Oriented", "Evidence-Based", "Outcome-Focused", or "" (random)
-- **badge_level**: "Beginner", "Intermediate", "Advanced", or "" (random)
-- **custom_instructions** (optional): Additional formatting requirements
-- **institution** (optional): Issuing institution name
-
-### 2. Edit Badge Metadata
-**POST** `/edit-badge-metadata`
-
-Append additional data to existing badges.
-
-**Request Body:**
+#### 5. Generate Advanced Badge
+- **Method**: POST
+- **URL**: `{{BASE_URL}}/api/v1/generate-badge-suggestions`
+- **Headers**: `Content-Type: application/json`
+- **Body**:
 ```json
 {
-    "badge_id": 123456,
-    "append_data": {
-        "duration": "40 hours",
-        "tags": ["programming", "machine-learning"],
-        "prerequisites": "Basic Python knowledge"
-    }
+  "course_input": "Machine Learning with Python - Deep Learning, Neural Networks, TensorFlow",
+  "badge_style": "Technical",
+  "badge_tone": "Encouraging",
+  "badge_level": "Advanced",
+  "institution": "AI Technology Institute"
 }
 ```
 
-**Response:**
-```json
-{
-    "message": "Data successfully appended to badge 123456",
-    "badge_id": 123456,
-    "updated_result": {
-        "credentialSubject": {...},
-        "imageConfig": {...},
-        "badge_id": 123456,
-        "duration": "40 hours",
-        "tags": ["programming", "machine-learning"],
-        "prerequisites": "Basic Python knowledge"
-    }
-}
-```
+#### 6. View Badge History
+- **Method**: GET
+- **URL**: `{{BASE_URL}}/api/v1/badge_history`
+- **Result**: Previously generated badges
 
-### 3. Get Badge History
-**GET** `/badge_history`
+## Performance Characteristics
 
-Retrieve generation history and stored badges.
+### Startup Times
+- **System Initialization**: 15-30 seconds via `start.sh`
+- **Health Check Validation**: Automatic with 30-attempt timeout
+- **Model Loading**: First request may take 30-60 seconds
 
-### 4. Get Available Styles
-**GET** `/styles`
+### Runtime Performance
+- **Subsequent Requests**: 5-15 seconds average response time
+- **Health Checks**: Instant response
+- **Memory Usage**: Stable after model loading (~2-4GB for Phi-4-mini)
 
-Get all available parameter options and descriptions.
-
-### 5. Health Check
-**GET** `/health`
-
-Check API status and availability.
-
-## Response Format
-
-Badge generation endpoints (`/generate-badge-suggestions`) return:
-
-```json
-{
-    "credentialSubject": {
-        "achievement": {
-            "criteria": {
-                "narrative": "Students will be able to..."
-            },
-            "description": "This comprehensive badge demonstrates...",
-            "image": {
-                "id": "https://example.com/achievements/badge_123456/image"
-            },
-            "name": "Machine Learning Specialist"
-        }
-    },
-    "imageConfig": {
-        "canvas": {"width": 600, "height": 600},
-        "layers": [
-            {
-                "type": "BackgroundLayer",
-                "mode": "solid",
-                "color": "#FFFFFF",
-                "z": 0
-            },
-            {
-                "type": "ShapeLayer",
-                "shape": "circle",
-                "fill": {"mode": "gradient", "start_color": "#FF6F61", "end_color": "#118AB2"},
-                "z": 15
-            }
-        ]
-    },
-    "badge_id": 123456
-}
-```
-
-## Configuration
-
-### Model Configuration
-```python
-MODEL_CONFIG = {
-    "model_name": "phi4-badge",
-    "temperature": 0.15,
-    "top_p": 0.8,
-    "top_k": 30,
-    "num_predict": 400,
-    "repeat_penalty": 1.05,
-    "num_ctx": 4096,
-    "stop": ["<|end|>", "}\n\n"]
-}
-```
-
-### Icon Configuration
-Place icon files in `icons.json` or use the built-in fallback keywords.
-
-## Usage Examples
-
-### Generate Random Badge
-```python
-import requests
-
-response = requests.post("http://localhost:8000/generate-badge-suggestions", json={
-    "course_input": "Data Science Fundamentals"
-})
-
-badge_data = response.json()
-print(f"Badge Name: {badge_data['credentialSubject']['achievement']['name']}")
-```
-
-### Generate with Specific Parameters
-```python
-response = requests.post("http://localhost:8000/generate-badge-suggestions", json={
-    "course_input": "Advanced Python Programming",
-    "badge_style": "Technical",
-    "badge_tone": "Detailed",
-    "criterion_style": "", # Random
-    "badge_level": "",     # Random
-    "institution": "Code Academy"
-})
-```
-
-### Generate Multiple Course Badge
-```python
-response = requests.post("http://localhost:8000/generate-badge-suggestions", json={
-    "course_input": "Python Programming; Machine Learning; Data Visualization",
-    "badge_style": "Professional",
-    "institution": "Data Science Institute"
-})
-```
-
-### Edit Badge Metadata
-```python
-# First generate a badge, then edit it
-edit_response = requests.post("http://localhost:8000/edit-badge-metadata", json={
-    "badge_id": 123456,
-    "append_data": {
-        "certification_type": "Industry Recognized",
-        "valid_until": "2027-12-31",
-        "tags": ["data-science", "python", "analytics"]
-    }
-})
-
-updated_badge = edit_response.json()["updated_result"]
-```
-
-## Architecture
-
-- **FastAPI** - Modern, fast web framework for API development
-- **Ollama + Phi-4** - AI model for intelligent content generation
-- **scikit-learn** - TF-IDF similarity for smart icon matching
-- **NLTK** - Natural language processing and text preprocessing
-- **Pydantic** - Data validation and serialization
-- **httpx** - Async HTTP client for model API calls
-
-## Features Deep Dive
-
-### Smart Parameter System
-- User-specified parameters are always used exactly as provided
-- Empty/missing parameters are automatically filled with random selections
-- Allows partial control over generation while maintaining variety
-- Supports mixed approaches (some fixed, some random)
-
-### Icon Intelligence
-- TF-IDF similarity matching between course content and icon descriptions
-- Automatic fallback to keyword matching if icon database unavailable
-- Dynamic icon selection based on semantic content context
-- Supports both text overlay and icon-based badge designs
-
-### Multi-Course Support
-- Automatically detects multiple courses in input using various delimiters
-- Creates unified badges covering all subject areas cohesively
-- Supports delimiters: newlines, semicolons, 'and', '+', '|', '//'
-- Maintains focus while encompassing all course content
+### Resource Requirements
+- **RAM**: 8GB+ recommended (4GB minimum)
+- **Storage**: 10GB+ for models and containers
+- **CPU**: Multi-core recommended for better inference speed
 
 ## Troubleshooting
 
-### Common Issues
+### Using the Startup Script
 
-**Ollama Connection Error**
+The `start.sh` script includes comprehensive error checking and reporting:
+
 ```bash
-# Ensure Ollama is running
-ollama serve
+# If startup fails, the script will show specific error messages
+./start.sh
 
-# Verify model is available
-ollama list
-
-# Check if API is accessible
-curl http://localhost:11434/api/generate
+# Common issues and automatic handling:
+# - Port conflicts: Automatically resolved
+# - Container conflicts: Cleaned up automatically
+# - Service health: Verified with timeout handling
+# - Network issues: Reported with diagnostic information
 ```
 
-**NLTK Data Missing**
+### Manual Troubleshooting
+
+#### Check Container Status
 ```bash
-python -c "import nltk; nltk.download('punkt'); nltk.download('stopwords')"
+docker compose -f docker/docker-compose.yml ps
 ```
 
-**Model Not Found**
+#### View Detailed Logs
 ```bash
-# Pull the base model
-ollama pull phi4:latest
+# All services
+docker compose -f docker/docker-compose.yml logs
 
-# Create custom model with Modelfile
-ollama create phi4-badge -f Modelfile
-
-# Test the model
-ollama run phi4-badge "Test message"
+# Specific service
+docker compose -f docker/docker-compose.yml logs badge-api
+docker compose -f docker/docker-compose.yml logs ollama-service
 ```
 
-**JSON Parsing Errors**
-- Ensure model is responding with valid JSON
-- Check model temperature and parameters
-- Verify system prompt in Modelfile
+#### Test Individual Services
+```bash
+# Badge API health
+curl http://localhost:8000/health
 
-## Performance
-
-- **Response Time**: ~2-5 seconds per badge generation
-- **Concurrent Requests**: Supports multiple simultaneous requests
-- **Memory Usage**: ~200MB base + model memory requirements
-- **Rate Limiting**: Configure as needed for your use case
-- **Caching**: In-memory badge history with 50-item limit
-
-## Security
-
-- Input validation using Pydantic models
-- Request timeout protection (120s default)
-- Comprehensive error handling and logging
-- No sensitive data storage or persistence
-- Safe JSON parsing with error recovery
-
-## Dependencies
-
-Core requirements:
-```
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic==2.5.1
-httpx==0.25.2
-scikit-learn==1.3.2
-numpy==1.24.4
-nltk==3.8.1
-typing-extensions==4.8.0
+# Ollama service
+curl http://localhost:11434/api/version
 ```
 
-## Contributing
+#### Resource Monitoring
+```bash
+# Container resource usage
+docker stats badge-api ollama-service
 
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+# System resource usage
+htop  # or top
+```
 
-## License
+### Common Issues and Solutions
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+#### Port Already in Use
+```bash
+# The start.sh script handles this automatically, but manually:
+sudo fuser -k 8000/tcp
+sudo fuser -k 11434/tcp
+```
 
-## Support
+#### Container Won't Start
+```bash
+# Check logs for specific error
+docker compose -f docker/docker-compose.yml logs ollama-service
 
-- **Documentation**: Interactive API docs at `/docs` endpoint
-- **Issues**: Open GitHub issues for bugs and feature requests
-- **API Reference**: Available at `/docs` and `/redoc` endpoints when running
-- **Testing**: Use `/health` endpoint to verify API status
+# Verify model file exists
+ls -la models/gguf/
+```
 
-## Acknowledgments
+#### Model Loading Issues
+```bash
+# Verify Modelfile path
+cat models/Modelfile
 
-- **Ollama Team** - For the excellent model serving platform
-- **Microsoft** - For the Phi-4 model architecture
-- **FastAPI** - For the outstanding web framework
-- **scikit-learn** - For machine learning utilities
+# Check container can access models
+docker exec ollama-service ls -la /models
+```
+
+#### Health Check Failures
+```bash
+# Wait longer for model initialization
+sleep 60
+curl http://localhost:8000/health
+
+# Check if services can communicate
+docker exec badge-api ping ollama
+```
+
+## Development and Customization
+
+### Adding New Models
+
+1. **Place GGUF file** in `models/gguf/` directory
+2. **Update Modelfile** with correct path:
+   ```dockerfile
+   FROM ./gguf/your-new-model.gguf
+   ```
+3. **Restart system**:
+   ```bash
+   ./start.sh
+   ```
+
+### Custom Icon Integration
+
+1. **Add PNG files** to `assets/icons/`
+2. **Update metadata** in `assets/icons/icon_metadata.json`
+3. **Restart services** to reload icon database
+
+### Configuration Changes
+
+Edit environment variables in `docker-compose.yml` and restart:
+```bash
+./start.sh  # Handles restart automatically
+```
+
+## Production Deployment
+
+### Using the Startup Script in Production
+
+```bash
+# Production startup with logging
+./start.sh > startup.log 2>&1
+
+# Verify deployment
+curl -f http://localhost:8000/health || exit 1
+```
+
+### Monitoring and Health Checks
+
+```bash
+# Automated health monitoring script
+#!/bin/bash
+while true; do
+    if ! curl -s http://localhost:8000/health > /dev/null; then
+        echo "Badge API unhealthy, restarting..."
+        ./start.sh
+    fi
+    sleep 300  # Check every 5 minutes
+done
+```
+
+### Backup and Recovery
+
+```bash
+# Backup generated badges
+docker exec badge-api cat badge_history.json > badges_backup.json
+
+# Backup model configurations
+cp models/Modelfile models/Modelfile.backup
+```
+
+## Support and Documentation
+
+### Quick Reference Commands
+
+```bash
+# Start system
+./start.sh
+
+# Check status
+docker compose -f docker/docker-compose.yml ps
+
+# View logs
+docker compose -f docker/docker-compose.yml logs -f
+
+# Stop system
+docker compose -f docker/docker-compose.yml down
+
+# System health
+curl http://localhost:8000/health
+```
+
+### Additional Resources
+- **Interactive API Docs**: `http://localhost:8000/docs` (when system is running)
+- **Open Badges 3.0 Spec**: [https://www.imsglobal.org/spec/ob/v3p0](https://www.imsglobal.org/spec/ob/v3p0)
+- **FastAPI Documentation**: [https://fastapi.tiangolo.com](https://fastapi.tiangolo.com)
+- **Ollama Documentation**: [https://ollama.ai/docs](https://ollama.ai/docs)
+
+---
+
+## Quick Reference
+
+### One-Command Operations
+```bash
+# Complete system startup
+./start.sh
+
+# System health check
+curl http://localhost:8000/health
+
+# Generate test badge
+curl -X POST http://localhost:8000/api/v1/generate-badge-suggestions \
+  -H "Content-Type: application/json" \
+  -d '{"course_input": "Test Course Description"}'
+
+# Stop system
+docker compose -f docker/docker-compose.yml down
+```
 
 ***
 
-**Happy Badge Generation!**
+**Status**: ✅ Production Ready with Automated Deployment  
+**Version**: 1.0.0 - Open Badge v3 Compliant with One-Command Startup  
+**Last Updated**: September 24, 2025  
+
+**Getting Started**: Run `./start.sh` and open Postman to `http://localhost:8000`
