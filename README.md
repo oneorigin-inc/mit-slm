@@ -29,7 +29,7 @@ Badge Generator API is a FastAPI-based web service that generates **Open Badge v
 ## Project Structure
 
 ```
-~/Desktop/mit-slm-dev_v2/
+/mit-slm-dev_v2/
 ├── start.sh                        # System startup automation script
 ├── app/
 │   ├── main.py                     # FastAPI application entry point
@@ -145,7 +145,7 @@ chmod +x start.sh
 
 ```bash
 # Navigate to project directory
-cd "~/Desktop/mit-slm-dev_v2"
+cd "~/mit-slm-dev_v2"
 
 # Start services manually
 docker compose -f docker/docker-compose.yml up -d
