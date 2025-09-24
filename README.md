@@ -1,6 +1,3 @@
-Here's the updated README with the `start.sh` integration:
-
-# Badge Generator API - Complete Documentation
 
 ## Project Overview
 
