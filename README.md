@@ -84,7 +84,7 @@ The fastest way to get your Badge Generator running:
 
 ```bash
 # Navigate to project directory
-cd "~/Desktop/mit-slm-dev_v2"
+cd "./mit-slm-dev_v2"
 
 # Make startup script executable (first time only)
 chmod +x start.sh
