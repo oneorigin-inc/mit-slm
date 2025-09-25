@@ -3,7 +3,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.ollama
-    image: docker-ollama                # If this image exists, use it; if not, build it
+    image: docker-ollama
     container_name: ollama-service
     ports:
       - "11434:11434"
@@ -19,12 +19,22 @@ services:
        sleep 10 &&
        ollama create phi4-chat -f /models/Modelfile &&
        wait"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      # Set the CUDA_VISIBLE_DEVICES to the specific GPU UUID using nvidia-container-runtime 
+      - CUDA_VISIBLE_DEVICES=GPU-63a7d2f4-b919-2de9-6a7c-25cb1b598936
 
   badge-api:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: docker-badge-api             # If this image exists, use it; if not, build it
+    image: docker-badge-api
     container_name: badge-api
     ports:
       - "8000:8000"
