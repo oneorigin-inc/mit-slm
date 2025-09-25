@@ -17,6 +17,6 @@ class RegenerationRequest(BaseModel):
     institution: Optional[str] = Field(default=None, description="Issuing institution name")
 
 class AppendDataRequest(BaseModel):
-    badge_id: int = Field(..., description="ID of the badge to edit")
+    badge_id: str = Field(..., description="ID of the badge to edit")
     append_data: Dict[str, Any] = Field(..., description="Additional data to append to the badge")
 

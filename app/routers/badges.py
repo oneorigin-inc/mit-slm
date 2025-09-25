@@ -1,6 +1,8 @@
 import time
 import random
 import logging
+import uuid
+import httpx
 from datetime import datetime
 from typing import List, Dict, Any
 from fastapi import APIRouter, HTTPException
@@ -23,6 +25,25 @@ router = APIRouter()
 
 # In-memory history
 badge_history: List[Dict[str, Any]] = []
+
+async def generate_badge_image(image_config: Dict[str, Any]) -> str:
+    """Call the image generation API and return base64 image
+
+    TODO: Replace hardcoded localhost:3001 with Docker Compose service URL in production
+    """
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "http://localhost:3001/api/v1/badge/generate",
+                json=image_config,
+                timeout=30.0
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result.get("data", {}).get("base64", "")
+    except Exception as e:
+        logger.error(f"Failed to generate badge image: {e}")
+        return ""
 
 @router.post("/generate-badge-suggestions", response_model=BadgeResponse)
 async def generate_badge(request: BadgeRequest):
@@ -81,7 +102,10 @@ async def generate_badge(request: BadgeRequest):
             image_config = image_config_wrapper.get("config", {})
 
         # Generate badge ID
-        badge_id = random.randint(100000, 999999)
+        badge_id = str(uuid.uuid4())
+
+        # Generate badge image
+        image_base64 = await generate_badge_image(image_config)
 
         # Transform to new JSON schema format
         result = BadgeResponse(
@@ -91,7 +115,7 @@ async def generate_badge(request: BadgeRequest):
                     "description": validated.badge_description,
                     "image": {
                         "id": f"https://example.com/achievements/badge_{badge_id}/image",
-                        "image_base64": None  # Will be populated later when image is generated
+                        "image_base64": image_base64
                     },
                     "name": validated.badge_name
                 }
@@ -213,7 +237,7 @@ async def regenerate_badge(request: RegenerationRequest):
             image_config = image_config_wrapper.get("config", {})
 
         # Generate badge ID
-        badge_id = random.randint(100000, 999999)
+        badge_id = str(uuid.uuid4())
 
         # Transform to new JSON schema format
         result = BadgeResponse(

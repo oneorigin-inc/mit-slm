@@ -10,5 +10,5 @@ class BadgeValidated(BaseModel):
 class BadgeResponse(BaseModel):
     credentialSubject: Dict[str, Any]
     imageConfig: Dict[str, Any] 
-    badge_id: int
+    badge_id: str
 
