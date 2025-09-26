@@ -1,4 +1,4 @@
-FROM ./gguf/Phi-4-mini-instruct_Q4_K_M.gguf
+FROM ./model/Phi-4-mini-instruct_Q4_K_M.gguf
 
 TEMPLATE """<|system|>{{ if .System }}{{ .System }}{{ end }}<|end|>
 <|user|>{{ .Prompt }}<|end|>
