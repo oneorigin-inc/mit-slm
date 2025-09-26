@@ -13,7 +13,7 @@ class Settings(BaseSettings):
         "temperature": 0.15,
         "top_p": 0.8,
         "top_k": 30,
-        "num_predict": 400,
+        "num_predict": 1024,
         "repeat_penalty": 1.05,
         "num_ctx": 4096,
         "stop": ["<|end|>", "}\n\n"]
