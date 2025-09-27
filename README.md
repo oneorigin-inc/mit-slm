@@ -1,4 +1,4 @@
-pip install --no-cache-dir llama-cpp-python==0.2.77 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121
+
 # Badge Generation API
 
 A comprehensive FastAPI-based system for generating educational badges with AI-powered content creation, intelligent icon selection, and customizable parameters.
