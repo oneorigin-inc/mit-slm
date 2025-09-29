@@ -42,7 +42,7 @@ def generate_badge_config(
     background_layer = {
         "type": "BackgroundLayer",
         "mode": "solid",
-        "color": "#FFFFFF",
+        "color": "#FFFFFF00",
         "z": 0,
     }
 
