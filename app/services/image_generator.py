@@ -25,7 +25,7 @@ def calculate_font_size(text: str, base_size: int) -> int:
 def generate_badge_config(
     meta: dict,
     seed: int | None = None,
-    logo_path: str = "../assets/logos/wgu_logo.png",
+    logo_path: str = "assets/logos/wgu_logo.png",
 ):
     """Generate text-based badge configuration following spec"""
     if seed is not None:
@@ -148,7 +148,7 @@ def generate_badge_config(
             "type": "TextLayer",
             "text": txt,
             "font": {
-                "path": "/System/Library/Fonts/Arial.ttf",
+                "path": "assets/fonts/Arial.ttf",
                 "size": font_size,
             },
             "color": color,
@@ -176,7 +176,7 @@ def generate_badge_config(
 def generate_badge_image_config(
     meta: dict,
     seed: int | None = None,
-    icon_dir: str = "../assets/icons/",
+    icon_dir: str = "assets/icons/",
     suggested_icon: str | None = None,
 ):
     """Generate icon-based badge configuration"""
@@ -279,7 +279,7 @@ async def generate_text_image_config(badge_name: str, badge_description: str,
     config = generate_badge_config(
         meta=meta,
         seed=seed,
-        logo_path="../assets/logos/institution_logo.png"
+        logo_path="assets/logos/wgu_logo.png"
     )
     
     return {
