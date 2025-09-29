@@ -164,7 +164,7 @@ def generate_badge_config(
     config = {
         "canvas": canvas,
         "layers": [
-            background_layer,
+            # background_layer, added this layer in image-generation backend so no need to pass here
             shape_layer,
             logo_layer,
             *text_layers,
@@ -257,7 +257,7 @@ def generate_badge_image_config(
     config = {
         "canvas": canvas,
         "layers": [
-            background_layer,
+            # background_layer, added this layer in image-generation backend so no need to pass here
             shape_layer,
             image_layer
         ],
