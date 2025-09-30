@@ -29,6 +29,7 @@ services:
     environment:
       # Set the CUDA_VISIBLE_DEVICES to the specific GPU UUID using nvidia-container-runtime 
       - CUDA_VISIBLE_DEVICES=GPU-63a7d2f4-b919-2de9-6a7c-25cb1b598936
+      - OLLAMA_KEEP_ALIVE=-1
 
   badge-api:
     build:
