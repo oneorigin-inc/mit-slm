@@ -20,7 +20,7 @@ class OllamaClient:
         payload = {
             "model": settings.MODEL_NAME,
             "prompt": prompt,
-            "stream": False,
+            "stream": True,
             **config
         }
         
