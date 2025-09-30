@@ -6,7 +6,7 @@ import os
 class Settings(BaseSettings):
     # Ollama Configuration  
     OLLAMA_API_URL: str = "http://localhost:11434/api/generate"
-    MODEL_NAME: str = "phi4-chat:latest"
+    MODEL_NAME: str = "phi4-chat-v1:latest"
     
     # Model Configuration
     MODEL_CONFIG: Dict = {
