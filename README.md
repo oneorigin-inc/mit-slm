@@ -67,8 +67,7 @@ A production-ready API for generating Open Badge v3 compliant metadata using loc
 │   ├── logos/                      # Institution branding assets
 │   └── fonts/                      # Typography resources
 ├── models/
-│   ├── gguf/                       # Quantized GGUF model files
-│   │   └── phi-4-mini-instruct-q4_k_m.gguf
+│   ├── phi-4-mini-instruct-q4_k_m.gguf  # Quantized GGUF model files
 │   └── Modelfile                   # Ollama model configuration
 ├── docker/
 │   ├── Dockerfile                  # Badge API container definition
