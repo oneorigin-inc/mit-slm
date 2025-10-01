@@ -2,13 +2,13 @@ import json
 import re
 import random
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, AsyncGenerator
 from pydantic import ValidationError
 from fastapi import HTTPException
 
 from app.core.config import settings
 from app.models.badge import BadgeValidated
-from app.services.ollama_client import call_model_async
+from app.services.ollama_client import call_model_async, call_model_stream_async
 from app.services.text_processor import process_course_input
 
 logger = logging.getLogger(__name__)
@@ -112,7 +112,7 @@ Parameters:
     if request.custom_instructions:
         user_content += f"\n- Special Instructions: {request.custom_instructions}"
 
-    user_content += "\n\nGenerate badge JSON:"
+    user_content += "\n\nGenerate badge JSON with exact schema {\"badge_name\": \"string\", \"badge_description\": \"string\", \"criteria\": {\"narrative\": \"string\"}}:"
 
     # Minimal prompt - Modelfile handles all the complex instructions
     prompt = user_content
@@ -148,4 +148,80 @@ Return JSON format:
 
     response = await call_model_async(prompt)
     return extract_json_from_response(response)
+
+async def generate_badge_metadata_stream_async(request) -> AsyncGenerator[Dict[str, Any], None]:
+    """Generate badge metadata with streaming response using new format"""
+    
+    # Process course input
+    processed_input = process_course_input(request.course_input)
+    
+    # Get random parameters
+    random_params = get_random_parameters(request)
+    
+    # Build the prompt
+    prompt = f"""Generate Open Badges 3.0 compliant metadata from course content.
+
+COURSE CONTENT:
+{processed_input}
+
+BADGE STYLE: {random_params['badge_style']} - {settings.STYLE_DESCRIPTIONS[random_params['badge_style']]}
+BADGE TONE: {random_params['badge_tone']} - {settings.TONE_DESCRIPTIONS[random_params['badge_tone']]}
+BADGE LEVEL: {random_params['badge_level']} - {settings.LEVEL_DESCRIPTIONS[random_params['badge_level']]}
+CRITERION STYLE: {random_params['criterion_style']} - {settings.CRITERION_TEMPLATES[random_params['criterion_style']]}
+
+INSTITUTION: {request.institution or "Not specified"}
+CUSTOM INSTRUCTIONS: {request.custom_instructions or "None"}
+
+OUTPUT FORMAT: Return ONLY valid JSON in this exact format:
+{{
+    "badge_name": "string",
+    "badge_description": "string", 
+    "criteria": {{
+        "narrative": "string"
+    }},
+    "raw_model_output": "string"
+}}
+
+Generate badge metadata now:"""
+
+    # Stream the response using the new ollama service
+    from app.services.ollama_client import ollama_client
+    
+    accumulated_text = ""
+    async for chunk in ollama_client.generate_stream(
+        content=prompt,
+        temperature=settings.MODEL_CONFIG.get("temperature", 0.15),
+        max_tokens=settings.MODEL_CONFIG.get("num_predict", 400),
+        top_p=settings.MODEL_CONFIG.get("top_p", 0.8),
+        top_k=settings.MODEL_CONFIG.get("top_k", 30),
+        repeat_penalty=settings.MODEL_CONFIG.get("repeat_penalty", 1.05)
+    ):
+        if chunk.get("type") == "token":
+            accumulated_text += chunk.get("content", "")
+            yield chunk
+        elif chunk.get("type") == "final":
+            # Process the final response
+            raw_response = chunk.get("content", "")
+            
+            # Try to extract JSON from the response
+            try:
+                badge_json = extract_json_from_response(raw_response)
+                badge_json["selected_parameters"] = random_params
+                badge_json["processed_course_input"] = processed_input
+                
+                # Return the parsed JSON as final content
+                yield {
+                    "type": "final",
+                    "content": badge_json,
+                    "request_id": chunk.get("request_id")
+                }
+            except Exception as e:
+                logger.warning(f"Failed to parse JSON from streaming response: {e}")
+                yield {
+                    "type": "error",
+                    "content": f"Failed to parse JSON: {str(e)}",
+                    "request_id": chunk.get("request_id")
+                }
+        elif chunk.get("type") == "error":
+            yield chunk
 
