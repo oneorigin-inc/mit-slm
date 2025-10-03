@@ -519,7 +519,7 @@ def generate_badge_config(
             "type": "TextLayer",
             "text": txt,
             "font": {
-                "path": "assets/Fonts/Arial.ttf",
+                "path": "assets/fonts/ArialBold.ttf" if idx == 0 else "assets/fonts/Arial.ttf",
                 "size": font_size,
             },
             "color": color,
