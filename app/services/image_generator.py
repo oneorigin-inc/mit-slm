@@ -13,14 +13,14 @@ def calculate_font_size(text: str, base_size: int) -> int:
     """Calculate font size based on text length within spec limits"""
     if not text:
         return base_size
-    
-    # Scale down for longer text, stay within 40-50 range
+
+    # Scale down for longer text, stay within 36-45 range 
     if len(text) > 30:
-        return max(base_size - 8, 40)
+        return max(base_size - 7, 36)
     elif len(text) > 20:
-        return max(base_size - 4, 40)
-    
-    return min(base_size, 50)
+        return max(base_size - 4, 36)
+
+    return min(base_size, 45)
 
 def generate_badge_config(
     meta: dict,
@@ -135,8 +135,8 @@ def generate_badge_config(
         if not txt:
             continue
             
-        # Font size within spec (40-50)
-        base_size = 48 if idx == 0 else 44 if idx == 1 else 40
+        # Font size within spec (36-45)
+        base_size = 43 if idx == 0 else 40 if idx == 1 else 36
         font_size = calculate_font_size(txt, base_size)
         
         color = _pick_palette_color(neutrals if idx == 0 else neutrals + cool + warm)

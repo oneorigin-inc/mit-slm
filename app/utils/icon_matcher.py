@@ -349,7 +349,7 @@ ICONS_DATA =[
       "display_name": "Microscope",
       "category": "science",
       "description": "Represents scientific research, laboratory skills, biology, detailed analysis, and investigative learning",
-      "keywords": ["science", "research", "laboratory", "biology", "analysis", "investigation", "microscopy", "study"],
+      "keywords": ["research", "laboratory", "biology", "analysis", "investigation", "microscopy", "study", "chemistry"],
       "use_cases": [
         "Lab skills certification",
         "Research project completion",
