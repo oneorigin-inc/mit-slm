@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, ValidationError
 from typing import Optional, List, Dict, Any, Union, AsyncGenerator
 import httpx
@@ -50,7 +51,7 @@ except Exception as e:
 
 # CONFIGURATION
 MODEL_CONFIG = {
-    "model_name": "phi4_chat_4:latest",
+    "model_name": "phi4-chat:latest",
     "temperature": 0.15,
     "top_p": 0.8,
     "top_k": 30,
@@ -64,6 +65,15 @@ OLLAMA_API = "http://localhost:11434/api/generate"
 
 app = FastAPI()
 logger = logging.getLogger("uvicorn.error")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Icons data - will be populated when JSON file is available
 ICONS_DATA = []
@@ -921,7 +931,7 @@ Return JSON format:
     response = await call_model_async(prompt)
     return extract_json_from_response(response)
 
-@app.post("/generate-badge-suggestions", response_model=BadgeResponse)
+@app.post("/api/v1/generate-badge-suggestions", response_model=BadgeResponse)
 async def generate_badge(request: BadgeRequest):
     """Generate a single badge with random parameter selection (non-streaming)"""
     start_time = time.time()
@@ -1033,7 +1043,7 @@ async def generate_badge(request: BadgeRequest):
         logger.exception("Unexpected error in /generate-badge-suggestions: %s", e)
         raise HTTPException(status_code=500, detail=f"Badge generation error: {str(e)}")
 
-@app.post("/generate-badge-suggestions/stream")
+@app.post("/api/v1/generate-badge-suggestions/stream")
 async def generate_badge_streaming(request: BadgeRequest):
     """Generate badge with streaming progress updates"""
     
@@ -1240,4 +1250,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
