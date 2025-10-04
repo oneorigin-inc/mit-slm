@@ -30,11 +30,11 @@ class Settings(BaseSettings):
     
     # Style Descriptions
     STYLE_DESCRIPTIONS: Dict = {
-        "Professional": "Use formal, business-oriented language emphasizing industry standards and career advancement.",
-        "Academic": "Use scholarly language emphasizing learning outcomes and academic rigor.",
-        "Industry": "Use sector-specific terminology focusing on job-readiness and practical applications.",
-        "Technical": "Use precise technical language with emphasis on tools and measurable outcomes.",
-        "Creative": "Use engaging language highlighting innovation and problem-solving."
+        "Professional": "Use formal, business-oriented language emphasizing industry standards and career advancement. Badge Name: polished, corporate-sounding conveying expertise.",
+        "Academic": "Use scholarly language emphasizing learning outcomes and academic rigor. Badge Name: scholarly, intellectual suggesting research excellence.",
+        "Industry": "Use sector-specific terminology focusing on job-readiness and practical applications. Badge Name: practical, sector-specific emphasizing real-world application.",
+        "Technical": "Use precise technical language with emphasis on tools and measurable outcomes. Badge Name: precise, tech-forward highlighting specific skills.",
+        "Creative": "Use engaging language highlighting innovation and problem-solving. Badge Name: imaginative, distinctive showcasing innovation."
     }
     
     TONE_DESCRIPTIONS: Dict = {
