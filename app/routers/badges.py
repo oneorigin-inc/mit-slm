@@ -406,357 +406,322 @@ def _normalize_badge_json(badge_json: Dict[str, Any]) -> Dict[str, Any]:
 
 @router.post("/generate-badge-suggestions/stream")
 async def generate_badge_stream(request: BadgeRequest):
-    """
-    Generate badge suggestions with streaming response.
-    
-    STREAMING BEHAVIOR:
-    - Streams ONLY: Badge metadata tokens (name, description, criteria) from LLM generation
-    - Silent: Image generation happens in background without streaming
-    - Final: Complete response with metadata + image in one final chunk
-    
-    CLIENT SEES:
-    1. Token-by-token streaming of badge text content
-    2. Complete final JSON with both metadata and image_base64
-    """
+    """Generate badge suggestions with streaming response - returns complete BadgeResponse"""
     start_time = time.time()
     request_id = None
-    badge_id = str(uuid.uuid4())
+    badge_id = random.randint(100000, 999999)
     
     try:
+        # Get random parameters
+        current_params = get_random_parameters(request)
+        
+        # Process course input
+        from app.services.text_processor import process_course_input
+        processed_content = process_course_input(request.course_input)
+        
+        # Build the prompt for the model
+        style_desc = settings.STYLE_DESCRIPTIONS.get(current_params['badge_style'], "Use clear, comprehensive language with specific examples.")
+        tone_desc = settings.TONE_DESCRIPTIONS.get(current_params['badge_tone'], "Professional and engaging tone.")
+        level_desc = settings.LEVEL_DESCRIPTIONS.get(current_params['badge_level'], "Appropriate for learners with basic knowledge.")
+        criterion_desc = settings.CRITERION_TEMPLATES.get(current_params['criterion_style'], "Clear, actionable criteria.")
+        
+        system_msg = "You are a badge metadata generator. Return only valid JSON with exact schema: {\"badge_name\": \"string\", \"badge_description\": \"string\", \"criteria\": {\"narrative\": \"string\"}}"
+        
+        user_content = f"""Create a unique badge for: {processed_content}
+
+IMPORTANT: If this covers multiple courses or complex content, create a comprehensive badge name , description and criterion that encompasses all areas while maintaining focus and clarity.
+
+Style: {style_desc}
+Tone: {tone_desc}
+Level: {level_desc}
+Criterion Format: {criterion_desc}
+
+Badge Name: Generate a creative and memorable name that captures the essence of the course(s). For multiple courses, create a unifying theme.
+Badge Description: Provide a comprehensive description covering competencies mastered, technical tools, real-world applications, assessment rigor, employer value, and transferable skills. For multiple courses, integrate all subject areas cohesively.
+Criteria: Focus on specific learning requirements, assessment methods, practical experiences, and evidence standards that span all course content."""
+
+        user_content += f"\n\nTarget Level: {current_params['badge_level']} - {level_desc}"
+
+        desc_instructions = "Badge description should cover: competencies mastered, technical tools, real-world applications, assessment rigor, employer value, transferable skills."
+        
+        if request.institution:
+            desc_instructions += f" Highlight that this badge is issued by {request.institution} and emphasize the institution's credibility."
+        user_content += f"\n\n{desc_instructions}"
+            
+        if request.custom_instructions:
+            user_content += f" Additional focus: {request.custom_instructions}. follow the instructions and generate badge data accordingly"
+
+        prompt = f"<|system|>{system_msg}<|end|>\n<|user|>{user_content}<|end|>\n<|assistant|>"
+        
+        # Import ollama service
+        from app.services.ollama_client import ollama_client
+        MODEL_CONFIG = settings.MODEL_CONFIG
+
         async def generate_stream_response():
             nonlocal request_id
-            badge_json = None
             accumulated_text = ""
             
             try:
-                # ============================================================
-                # PHASE 1: STREAM BADGE METADATA TOKENS (name, description, criteria)
-                # ============================================================
-                async for chunk in generate_badge_metadata_stream_async(request):
+                # Call the service layer for streaming generation
+                async for chunk in ollama_client.generate_stream(
+                    content=prompt,
+                    temperature=MODEL_CONFIG.get("temperature", 0.15),
+                    max_tokens=MODEL_CONFIG.get("num_predict", 400),
+                    top_p=MODEL_CONFIG.get("top_p", 0.8),
+                    top_k=MODEL_CONFIG.get("top_k", 30),
+                    repeat_penalty=MODEL_CONFIG.get("repeat_penalty", 1.05)
+                ):
                     # Track request ID for logging
                     if chunk.get("request_id") and not request_id:
                         request_id = chunk.get("request_id")
                     
+                    # Handle different chunk types
                     if chunk.get("type") == "token":
-                        #  STREAM: Badge metadata tokens as they're generated
+                        # Stream individual tokens
                         accumulated_text += chunk.get("content", "")
-                        token_chunk = {
+                        formatted_chunk = format_streaming_response({
                             "type": "token",
                             "content": chunk.get("content", ""),
+                            "accumulated": accumulated_text,
                             "badge_id": badge_id
-                        }
-                        yield format_streaming_response(token_chunk)
+                        })
+                        yield formatted_chunk
                         
                     elif chunk.get("type") == "final":
-                        # Badge metadata generation complete
+                        # Process the final response with advanced features
                         try:
-                            badge_json = chunk.get("content", {})
+                            # Extract and parse JSON from the accumulated text
+                            raw_response = accumulated_text
                             
-                            # Parse JSON if it's a string
-                            if isinstance(badge_json, str):
-                                try:
-                                    # Try to extract JSON from markdown code blocks
-                                    json_start = badge_json.find('```json')
-                                    json_end = badge_json.find('```', json_start + 7)
-                                    
-                                    if json_start != -1 and json_end != -1:
-                                        json_content = badge_json[json_start + 7:json_end].strip()
-                                        badge_json = json.loads(json_content)
-                                    else:
-                                        # Fallback: try to parse directly
-                                        badge_json = json.loads(badge_json)
-                                except json.JSONDecodeError as e:
-                                    logger.error(f"Failed to parse JSON from response: {e}")
-                                    error_chunk = {
-                                        "type": "error",
-                                        "content": f"Failed to parse badge metadata JSON: {str(e)}",
-                                        "badge_id": badge_id,
-                                        "error_details": str(e)
-                                    }
-                                    yield format_streaming_response(error_chunk)
-                                    return
+                            # Try to extract JSON from the accumulated text
+                            try:
+                                # Look for JSON content between ```json and ```
+                                json_start = raw_response.find('```json')
+                                json_end = raw_response.find('```', json_start + 7)
+                                
+                                if json_start != -1 and json_end != -1:
+                                    json_content = raw_response[json_start + 7:json_end].strip()
+                                    badge_json = json.loads(json_content)
+                                else:
+                                    # Fallback: try to extract JSON from the full response
+                                    badge_json = extract_json_from_response(raw_response)
+                                
+                                raw_model_output_str = raw_response
+                            except json.JSONDecodeError as e:
+                                logger.error(f"Failed to parse JSON from accumulated text: {e}")
+                                error_chunk = {
+                                    "type": "error",
+                                    "content": f"Failed to parse JSON from response: {str(e)}",
+                                    "badge_id": badge_id
+                                }
+                                yield format_streaming_response(error_chunk)
+                                return
                             
+                            badge_json = _normalize_badge_json(badge_json)
+                            badge_json["selected_parameters"] = current_params
+                            badge_json["processed_course_input"] = processed_content
+
                             # Validate badge data
                             try:
                                 validated = BadgeValidated(
                                     badge_name=badge_json.get("badge_name", ""),
                                     badge_description=badge_json.get("badge_description", ""),
                                     criteria=badge_json.get("criteria", {}),
-                                    raw_model_output=badge_json.get("raw_model_output", accumulated_text)
+                                    raw_model_output=raw_model_output_str
                                 )
                             except ValidationError as ve:
                                 logger.warning("Badge validation failed: %s", ve)
                                 error_chunk = {
-                                    "type": "error", 
+                                    "type": "error",
                                     "content": f"Badge schema validation error: {ve}",
-                                    "badge_id": badge_id,
-                                    "error_details": str(ve)
+                                    "badge_id": badge_id
                                 }
                                 yield format_streaming_response(error_chunk)
                                 return
+
+                            # Generate image configuration with random selection
+                            image_type = random.choice(["text_overlay", "icon_based"])
+                            logger.info(f"Selected image type: {image_type}")
+
+                            if image_type == "icon_based":
+                                icon_suggestions_result = await get_icon_suggestions_for_badge(
+                                    badge_name=validated.badge_name,
+                                    badge_description=validated.badge_description,
+                                    custom_instructions=request.custom_instructions or "",
+                                    top_k=3
+                                )
+                                
+                                # Extract the suggested icon and alternatives
+                                suggested_icon = icon_suggestions_result.get("suggested_icon", {})
+                                alternatives = icon_suggestions_result.get("alternatives", [])
+                                
+                                # Pass the result directly to generate_icon_image_config
+                                image_config_wrapper = await generate_icon_image_config(
+                                    validated.badge_name,
+                                    validated.badge_description,
+                                    icon_suggestions_result,
+                                    request.institution or ""
+                                )
+                                
+                                image_config = image_config_wrapper.get("config", {})
+                                
+                            else:  # text_overlay
+                                optimized_text = await optimize_badge_text({
+                                    "badge_name": validated.badge_name,
+                                    "badge_description": validated.badge_description,
+                                    "institution": request.institution or ""
+                                })
+                                
+                                image_config_wrapper = await generate_text_image_config(
+                                    validated.badge_name,
+                                    validated.badge_description,
+                                    optimized_text,
+                                    request.institution or ""
+                                )
+                                
+                                image_config = image_config_wrapper.get("config", {})
+
+                            logger.info(f"Image config wrapper: {image_config_wrapper}")
+                            logger.info(f"Image config: {image_config}")
+
+                            image_base64 = await generate_badge_image(image_config)
+                            # Log image generation summary (do not log full base64)
+                            try:
+                                preview = (image_base64 or "")[:48]
+                                logger.info(
+                                    "Badge image generated | base64_len=%s preview=%s...",
+                                    len(image_base64) if isinstance(image_base64, str) else 0,
+                                    preview
+                                )
+                            except Exception:
+                                pass
+
+                            # Transform to new JSON schema format
+                            result = BadgeResponse(
+                                credentialSubject={
+                                    "achievement": {
+                                        "criteria": validated.criteria,
+                                        "description": validated.badge_description,
+                                        "image": {
+                                            "id": f"https://example.com/achievements/badge_{str(uuid.uuid4())}/image",
+                                            "image_base64": image_base64
+                                        },
+                                        "name": validated.badge_name
+                                    }
+                                },
+                                imageConfig=image_config,
+                                badge_id=str(uuid.uuid4())
+                            )
+
+                            # Store in history
+                            history_entry = {
+                                "id": len(badge_history) + 1,
+                                "timestamp": datetime.now().isoformat(),
+                                "course_input": (request.course_input[:100] + "...") if len(request.course_input) > 100 else request.course_input,
+                                "processed_course_input": badge_json.get("processed_course_input", request.course_input),
+                                "user_badge_style": request.badge_style,
+                                "user_badge_tone": request.badge_tone,
+                                "user_criterion_style": request.criterion_style,
+                                "user_badge_level": request.badge_level,
+                                "custom_instructions": request.custom_instructions,
+                                "institution": request.institution,
+                                "selected_image_type": image_type,
+                                "selected_parameters": badge_json.get("selected_parameters", {}),
+                                "badge_id": badge_id,
+                                "result": result,
+                                "generation_time": time.time() - start_time
+                            }
+                            badge_history.append(history_entry)
                             
-                            # Metadata ready - log but don't send intermediate chunk
-                            logger.info(f"Badge metadata validated for badge_id: {badge_id}")
-                            break
+                            if len(badge_history) > 50:
+                                badge_history.pop(0)
+
+                            # Stream the final result
+                            try:
+                                # Convert result to dict safely
+                                if hasattr(result, 'dict'):
+                                    result_dict = result.dict()
+                                elif hasattr(result, '__dict__'):
+                                    result_dict = result.__dict__
+                                else:
+                                    result_dict = dict(result) if isinstance(result, dict) else {}
+                                
+                                final_chunk = {
+                                    "type": "final",
+                                    "content": result_dict,
+                                    "badge_id": badge_id,
+                                    "generation_time": time.time() - start_time
+                                }
+                                yield format_streaming_response(final_chunk)
+                                
+                            except Exception as dict_error:
+                                logger.error(f"Error converting result to dict: {dict_error}")
+                                # Fallback: create a simple response
+                                fallback_result = {
+                                    "credentialSubject": {
+                                        "achievement": {
+                                            "criteria": validated.criteria,
+                                            "description": validated.badge_description,
+                                            "image": {
+                                                "id": f"https://example.com/achievements/badge_{badge_id}/image",
+                                                "image_base64": None
+                                            },
+                                            "name": validated.badge_name
+                                        }
+                                    },
+                                    "imageConfig": image_config,
+                                    "badge_id": badge_id
+                                }
+                                
+                                final_chunk = {
+                                    "type": "final",
+                                    "content": fallback_result,
+                                    "badge_id": badge_id,
+                                    "generation_time": time.time() - start_time
+                                }
+                                yield format_streaming_response(final_chunk)
                             
-                        except Exception as parse_error:
-                            logger.error(f"Error processing metadata final chunk: {parse_error}", exc_info=True)
+                            selected_params = badge_json.get("selected_parameters", {})
+                            logger.info(f"Generated badge ID {badge_id}: '{validated.badge_name}' with parameters: {selected_params}")
+                            
+                        except Exception as e:
+                            logger.error(f"Error processing final response: {e}", exc_info=True)
                             error_chunk = {
                                 "type": "error",
-                                "content": f"Error processing metadata: {str(parse_error)}",
+                                "content": f"Error processing final response: {str(e)}",
                                 "badge_id": badge_id,
-                                "error_details": str(parse_error)
+                                "error_details": str(e)
                             }
                             yield format_streaming_response(error_chunk)
-                            return
-                        
+                            
                     elif chunk.get("type") == "error":
-                        # Forward metadata generation errors
-                        error_chunk = {
-                            "type": "error",
-                            "content": f"Metadata generation error: {chunk.get('content', 'Unknown error')}",
-                            "badge_id": badge_id,
-                            "request_id": request_id
-                        }
-                        yield format_streaming_response(error_chunk)
-                        return
-                
-                # Ensure we have valid badge_json before proceeding
-                if not badge_json:
-                    logger.error("Badge metadata stream completed without valid data")
-                    error_chunk = {
-                        "type": "error",
-                        "content": "Failed to generate badge metadata - no data received",
-                        "badge_id": badge_id
-                    }
-                    yield format_streaming_response(error_chunk)
-                    return
-                
-                # ============================================================
-                # PHASE 2: GENERATE IMAGE SILENTLY (NO STREAMING)
-                # ============================================================
-                logger.info(f"Starting silent image generation for badge_id: {badge_id}")
-                
-                # Select image type randomly
-                image_type = random.choice(["text_overlay", "icon_based"])
-                logger.info(f"Selected image type: {image_type} for badge_id: {badge_id}")
-                
-                try:
-                    # NO STREAMING: Generate image config silently
-                    if image_type == "icon_based":
-                        icon_suggestions = await get_icon_suggestions_for_badge(
-                            badge_name=validated.badge_name,
-                            badge_description=validated.badge_description,
-                            custom_instructions=request.custom_instructions or "",
-                            top_k=3
-                        )
-                        
-                        if not icon_suggestions:
-                            logger.warning("No icon suggestions returned, falling back to text overlay")
-                            image_type = "text_overlay"
-                        else:
-                            image_config_wrapper = await generate_icon_image_config(
-                                validated.badge_name,
-                                validated.badge_description,
-                                icon_suggestions,
-                                request.institution or ""
-                            )
-                            
-                            image_config = image_config_wrapper.get("config", {})
-                    
-                    if image_type == "text_overlay":
-                        optimized_text = await optimize_badge_text({
-                            "badge_name": validated.badge_name,
-                            "badge_description": validated.badge_description,
-                            "institution": request.institution or ""
-                        })
-                        
-                        image_config_wrapper = await generate_text_image_config(
-                            validated.badge_name,
-                            validated.badge_description,
-                            optimized_text,
-                            request.institution or ""
-                        )
-                        
-                        image_config = image_config_wrapper.get("config", {})
-                    
-                    # Validate image config
-                    if not image_config:
-                        logger.error("Empty image config generated")
-                        error_chunk = {
-                            "type": "error",
-                            "content": "Failed to generate valid image configuration",
-                            "badge_id": badge_id
-                        }
-                        yield format_streaming_response(error_chunk)
-                        return
-                    
-                    logger.info(f"Image config generated successfully for badge_id: {badge_id}")
-                    
-                except Exception as config_error:
-                    logger.error(f"Error generating image configuration: {config_error}", exc_info=True)
-                    error_chunk = {
-                        "type": "error",
-                        "content": f"Image configuration error: {str(config_error)}",
-                        "badge_id": badge_id,
-                        "error_details": str(config_error)
-                    }
-                    yield format_streaming_response(error_chunk)
-                    return
-                
-                #  NO STREAMING: Generate badge image silently
-                try:
-                    image_base64 = await generate_badge_image(image_config)
-                    
-                    # Log image generation (don't log full base64)
-                    try:
-                        preview = (image_base64 or "")[:48]
-                        logger.info(
-                            "Badge image generated | badge_id=%s base64_len=%s preview=%s...",
-                            badge_id,
-                            len(image_base64) if isinstance(image_base64, str) else 0,
-                            preview
-                        )
-                    except Exception:
-                        logger.info(f"Badge image generated for badge_id: {badge_id}")
-                        
-                except Exception as img_error:
-                    logger.error(f"Image generation failed: {img_error}", exc_info=True)
-                    error_chunk = {
-                        "type": "error",
-                        "content": f"Image generation failed: {str(img_error)}",
-                        "badge_id": badge_id,
-                        "error_details": str(img_error)
-                    }
-                    yield format_streaming_response(error_chunk)
-                    return
-                
-                # ============================================================
-                # PHASE 3: SEND FINAL COMPLETE RESPONSE (METADATA + IMAGE)
-                # ============================================================
-                try:
-                    result = BadgeResponse(
-                        credentialSubject={
-                            "achievement": {
-                                "criteria": validated.criteria,
-                                "description": validated.badge_description,
-                                "image": {
-                                    "id": f"https://example.com/achievements/badge_{badge_id}/image",
-                                    "image_base64": image_base64  # ✅ Image included in final response
-                                },
-                                "name": validated.badge_name
-                            }
-                        },
-                        imageConfig=image_config,
-                        badge_id=badge_id
-                    )
-                    
-                    # Store in history
-                    history_entry = {
-                        "id": badge_id,
-                        "timestamp": datetime.now().isoformat(),
-                        "course_input": (request.course_input[:100] + "...") if len(request.course_input) > 100 else request.course_input,
-                        "processed_course_input": badge_json.get("processed_course_input", request.course_input),
-                        "user_badge_style": request.badge_style,
-                        "user_badge_tone": request.badge_tone,
-                        "user_criterion_style": request.criterion_style,
-                        "user_badge_level": request.badge_level,
-                        "custom_instructions": request.custom_instructions,
-                        "institution": request.institution,
-                        "selected_image_type": image_type,
-                        "selected_parameters": badge_json.get("selected_parameters", {}),
-                        "badge_id": badge_id,
-                        "result": result,
-                        "generation_time": time.time() - start_time
-                    }
-                    badge_history.append(history_entry)
-                    
-                    if len(badge_history) > 50:
-                        badge_history.pop(0)
-                    
-                    # SEND FINAL: Complete response with both metadata and image
-                    try:
-                        # Convert result to dict safely
-                        if hasattr(result, 'dict'):
-                            result_dict = result.dict()
-                        elif hasattr(result, '__dict__'):
-                            result_dict = result.__dict__
-                        else:
-                            result_dict = dict(result) if isinstance(result, dict) else {}
-                        
-                        final_chunk = {
-                            "type": "final",
-                            "content": result_dict,  # Complete badge data with image_base64
-                            "badge_id": badge_id,
-                           
-                        }
-                        yield format_streaming_response(final_chunk)
-                        
-                    except Exception as dict_error:
-                        logger.error(f"Error converting result to dict: {dict_error}")
-                        # Fallback: create a simple response
-                        fallback_result = {
-                            "credentialSubject": {
-                                "achievement": {
-                                    "criteria": validated.criteria,
-                                    "description": validated.badge_description,
-                                    "image": {
-                                        "id": f"https://example.com/achievements/badge_{badge_id}/image",
-                                        "image_base64": image_base64
-                                    },
-                                    "name": validated.badge_name
-                                }
-                            },
-                            "imageConfig": image_config,
-                            "badge_id": badge_id
-                        }
-                        
-                        final_chunk = {
-                            "type": "final",
-                            "content": fallback_result,
-                            "badge_id": badge_id,
-                            
-                        }
-                        yield format_streaming_response(final_chunk)
-                    
-                    selected_params = badge_json.get("selected_parameters", {})
-                    logger.info(f"Generated badge ID {badge_id}: '{validated.badge_name}' with parameters: {selected_params}")
-                    
-                except Exception as result_error:
-                    logger.error(f"Error creating final result: {result_error}", exc_info=True)
-                    error_chunk = {
-                        "type": "error",
-                        "content": f"Error creating final result: {str(result_error)}",
-                        "badge_id": badge_id,
-                        "error_details": str(result_error)
-                    }
-                    yield format_streaming_response(error_chunk)
-                    return
+                        # Stream error chunks
+                        yield format_streaming_response(chunk)
                 
                 # Log successful completion
-                logger.info(f"Successfully completed badge generation for badge_id: {badge_id}, request_id: {request_id}")
+                log_response("Streaming badge suggestions generation", True, request_id)
                 
             except Exception as e:
-                logger.error(f"Error in streaming generation: {e}", exc_info=True)
+                # Handle streaming errors
                 error_chunk = {
                     "type": "error",
-                    "content": f"Badge generation error: {str(e)}",
-                    "badge_id": badge_id,
+                    "content": f"Streaming generation failed: {str(e)}",
                     "request_id": request_id,
-                    "error_details": str(e)
+                    "badge_id": badge_id
                 }
                 yield format_streaming_response(error_chunk)
+                log_response("Streaming badge suggestions generation", False, request_id)
         
         # Create streaming response
         return create_streaming_response(generate_stream_response())
         
-    except HTTPException:
-        raise
     except ValueError as e:
         # Handle validation errors
         error_msg = f"Validation error: {str(e)}"
         logger.error(error_msg)
         raise HTTPException(status_code=400, detail=error_msg)
+        
     except Exception as e:
-        logger.exception("Unexpected error in /generate-badge-suggestions/stream: %s", e)
-        raise HTTPException(status_code=500, detail=f"Badge generation error: {str(e)}")
+        # Handle other errors
+        log_response("Streaming badge suggestions generation", False, request_id)
+        raise handle_error(e, "Streaming badge suggestions generation", request_id)
