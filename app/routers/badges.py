@@ -406,52 +406,37 @@ def _normalize_badge_json(badge_json: Dict[str, Any]) -> Dict[str, Any]:
 
 @router.post("/generate-badge-suggestions/stream")
 async def generate_badge_stream(request: BadgeRequest):
-    """Generate badge suggestions with streaming response - returns complete BadgeResponse"""
+    """Generate badge suggestions with streaming response"""
     start_time = time.time()
     request_id = None
-    badge_id = random.randint(100000, 999999)
+    badge_id = str(uuid.uuid4())
     
     try:
-        # Get random parameters
         current_params = get_random_parameters(request)
         
-        # Process course input
         from app.services.text_processor import process_course_input
         processed_content = process_course_input(request.course_input)
         
-        # Build the prompt for the model
-        style_desc = settings.STYLE_DESCRIPTIONS.get(current_params['badge_style'], "Use clear, comprehensive language with specific examples.")
-        tone_desc = settings.TONE_DESCRIPTIONS.get(current_params['badge_tone'], "Professional and engaging tone.")
-        level_desc = settings.LEVEL_DESCRIPTIONS.get(current_params['badge_level'], "Appropriate for learners with basic knowledge.")
-        criterion_desc = settings.CRITERION_TEMPLATES.get(current_params['criterion_style'], "Clear, actionable criteria.")
-        
-        system_msg = "You are a badge metadata generator. Return only valid JSON with exact schema: {\"badge_name\": \"string\", \"badge_description\": \"string\", \"criteria\": {\"narrative\": \"string\"}}"
-        
-        user_content = f"""Create a unique badge for: {processed_content}
+        # Build user content - Modelfile handles system instructions
+        user_content = f"""Course Content: {processed_content}
 
-IMPORTANT: If this covers multiple courses or complex content, create a comprehensive badge name , description and criterion that encompasses all areas while maintaining focus and clarity.
+Parameters:
+- Style: {settings.STYLE_DESCRIPTIONS.get(current_params['badge_style'])}
+- Tone: {settings.TONE_DESCRIPTIONS.get(current_params['badge_tone'])}
+- Level: {settings.LEVEL_DESCRIPTIONS.get(current_params['badge_level'])}
+- Criterion Style: {settings.CRITERION_TEMPLATES.get(current_params['criterion_style'])}"""
 
-Style: {style_desc}
-Tone: {tone_desc}
-Level: {level_desc}
-Criterion Format: {criterion_desc}
-
-Badge Name: Generate a creative and memorable name that captures the essence of the course(s). For multiple courses, create a unifying theme.
-Badge Description: Provide a comprehensive description covering competencies mastered, technical tools, real-world applications, assessment rigor, employer value, and transferable skills. For multiple courses, integrate all subject areas cohesively.
-Criteria: Focus on specific learning requirements, assessment methods, practical experiences, and evidence standards that span all course content."""
-
-        user_content += f"\n\nTarget Level: {current_params['badge_level']} - {level_desc}"
-
-        desc_instructions = "Badge description should cover: competencies mastered, technical tools, real-world applications, assessment rigor, employer value, transferable skills."
-        
         if request.institution:
-            desc_instructions += f" Highlight that this badge is issued by {request.institution} and emphasize the institution's credibility."
-        user_content += f"\n\n{desc_instructions}"
-            
+            user_content += f"\n- Institution: {request.institution}"
+        
         if request.custom_instructions:
-            user_content += f" Additional focus: {request.custom_instructions}. follow the instructions and generate badge data accordingly"
+            user_content += f"\n- Special Instructions: {request.custom_instructions}"
 
-        prompt = f"<|system|>{system_msg}<|end|>\n<|user|>{user_content}<|end|>\n<|assistant|>"
+        user_content += '\n\nGenerate badge JSON with exact schema {"badge_name": "string", "badge_description": "string", "criteria": {"narrative": "string"}}:'
+
+        # Minimal prompt - Modelfile handles all complex instructions
+        prompt = user_content
+        
         
         # Import ollama service
         from app.services.ollama_client import ollama_client
