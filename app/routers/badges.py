@@ -450,8 +450,8 @@ Parameters:
                 # Call the service layer for streaming generation
                 async for chunk in ollama_client.generate_stream(
                     content=prompt,
-                    temperature=MODEL_CONFIG.get("temperature", 0.15),
-                    max_tokens=MODEL_CONFIG.get("num_predict", 400),
+                    temperature=MODEL_CONFIG.get("temperature", 0.2),
+                    max_tokens=MODEL_CONFIG.get("num_predict", 1024),
                     top_p=MODEL_CONFIG.get("top_p", 0.8),
                     top_k=MODEL_CONFIG.get("top_k", 30),
                     repeat_penalty=MODEL_CONFIG.get("repeat_penalty", 1.05)
