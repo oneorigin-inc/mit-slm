@@ -109,7 +109,7 @@ def generate_badge_config(
         "z": random.randint(20, 29),
     }
 
-    # Smart text processing - always include subtitle for text layouts
+    # Smart text processing
     def _clip_smart(s, max_len=40):
         if not s:
             return ""
@@ -122,10 +122,22 @@ def generate_badge_config(
     subtitle = _clip_smart(meta.get("subtitle") or "Certified Achievement")
     extra = _clip_smart(meta.get("extra_text") or "")
 
-    # For text layouts, always include at least title + subtitle
-    texts = [title, subtitle]
-    if extra and len(title) <= 20 and len(subtitle) <= 20:  # Add third only if others are short
-        texts.append(extra)
+    # Always include title, randomly choose between subtitle OR extra_text
+    texts = [title]
+    
+    # Randomly select subtitle or extra_text (50/50 chance)
+    if random.random() < 0.5:
+        # Use subtitle
+        if subtitle:
+            texts.append(subtitle)
+        elif extra:  # Fallback to extra if subtitle is empty
+            texts.append(extra)
+    else:
+        # Use extra_text
+        if extra:
+            texts.append(extra)
+        elif subtitle:  # Fallback to subtitle if extra is empty
+            texts.append(subtitle)
 
     # Text layers (z: 30-39)
     text_layers = []
@@ -136,7 +148,7 @@ def generate_badge_config(
             continue
             
         # Font size within spec (36-45)
-        base_size = 43 if idx == 0 else 40 if idx == 1 else 36
+        base_size = 43 if idx == 0 else 40
         font_size = calculate_font_size(txt, base_size)
         
         color = _pick_palette_color(neutrals if idx == 0 else neutrals + cool + warm)
@@ -321,4 +333,3 @@ async def generate_icon_image_config(badge_name: str, badge_description: str,
         "suggested_icon": suggested_icon,
         "seed_used": seed
     }
-
