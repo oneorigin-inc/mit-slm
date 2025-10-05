@@ -20,3 +20,8 @@ class AppendDataRequest(BaseModel):
     badge_id: str = Field(..., description="ID of the badge to edit")
     append_data: Dict[str, Any] = Field(..., description="Additional data to append to the badge")
 
+# Supporting Pydantic model for the regenerate request
+class BadgeRegenerateRequest(BaseModel):
+    """Request model for badge regeneration using custom instructions"""
+    custom_instructions: str  # e.g., "give badge name", "make it more concise", "focus on leadership"
+    institution: Optional[str] = None  # Optional: override institution from last badge

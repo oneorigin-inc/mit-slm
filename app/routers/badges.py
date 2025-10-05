@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import AsyncGenerator, List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 import uuid
 
 from app.models.requests import BadgeRequest, RegenerationRequest, AppendDataRequest
@@ -710,3 +710,324 @@ Parameters:
         # Handle other errors
         log_response("Streaming badge suggestions generation", False, request_id)
         raise handle_error(e, "Streaming badge suggestions generation", request_id)
+    
+class BadgeRegenerateRequest(BaseModel):
+    """Request model for badge regeneration using custom instructions"""
+    custom_instructions: str  # e.g., "give badge name", "make it more concise", "focus on leadership"
+    institution: Optional[str] = None  # Optional: override institution from last badge
+
+    
+@router.post("/regenerate-badge-stream")
+async def regenerate_badge_stream(request: BadgeRegenerateRequest):
+    """Regenerate badge using custom instructions and automatically retrieved context"""
+    start_time = time.time()
+    request_id = None
+    badge_id = str(uuid.uuid4())
+    
+    try:
+        # Get the last badge from history automatically
+        if not badge_history:
+            raise ValueError("No previous badge found in history. Please generate a badge first.")
+        
+        last_badge_entry = badge_history[-1]
+        
+        # Extract previous badge data and course input from history
+        previous_badge = last_badge_entry.get("result")
+        course_input = last_badge_entry.get("course_input", "")
+        processed_content = last_badge_entry.get("processed_course_input", course_input)
+        
+        # Get current parameters from previous badge
+        current_params = last_badge_entry.get("selected_parameters", {})
+        
+        # Extract previous badge achievement data
+        if hasattr(previous_badge, 'dict'):
+            previous_badge_dict = previous_badge.dict()
+        elif hasattr(previous_badge, '__dict__'):
+            previous_badge_dict = previous_badge.__dict__
+        else:
+            previous_badge_dict = previous_badge
+            
+        previous_achievement = previous_badge_dict.get('credentialSubject', {}).get('achievement', {})
+        
+        # Build context with previous badge data
+        previous_badge_context = f"""Previous Badge Data:
+- Badge Name: {previous_achievement.get('name', 'N/A')}
+- Badge Description: {previous_achievement.get('description', 'N/A')}
+- Criteria: {json.dumps(previous_achievement.get('criteria', {}), indent=2)}"""
+        
+        # Build user content with custom instructions
+        user_content = f"""Course Content: {processed_content}
+
+{previous_badge_context}
+
+Custom Instructions: {request.custom_instructions}
+
+Parameters:
+- Style: {settings.STYLE_DESCRIPTIONS.get(current_params.get('badge_style', 'professional'))}
+- Tone: {settings.TONE_DESCRIPTIONS.get(current_params.get('badge_tone', 'formal'))}
+- Level: {settings.LEVEL_DESCRIPTIONS.get(current_params.get('badge_level', 'intermediate'))}
+- Criterion Style: {settings.CRITERION_TEMPLATES.get(current_params.get('criterion_style', 'descriptive'))}"""
+
+        institution = last_badge_entry.get("institution") or request.institution
+        if institution:
+            user_content += f"\n- Institution: {institution}"
+
+        user_content += '\n\nBased on the custom instructions above, regenerate the badge. Keep fields unchanged if not mentioned in the instructions. Generate JSON with exact schema {"badge_name": "string", "badge_description": "string", "criteria": {"narrative": "string"}}:'
+
+        prompt = user_content
+        
+        # Import ollama service
+        from app.services.ollama_client import ollama_client
+        MODEL_CONFIG = settings.MODEL_CONFIG
+
+        async def generate_stream_response():
+            nonlocal request_id
+            accumulated_text = ""
+            
+            try:
+                # Call the service layer for streaming generation
+                async for chunk in ollama_client.generate_stream(
+                    content=prompt,
+                    temperature=MODEL_CONFIG.get("temperature", 0.15),
+                    max_tokens=MODEL_CONFIG.get("num_predict", 400),
+                    top_p=MODEL_CONFIG.get("top_p", 0.8),
+                    top_k=MODEL_CONFIG.get("top_k", 30),
+                    repeat_penalty=MODEL_CONFIG.get("repeat_penalty", 1.05)
+                ):
+                    # Track request ID for logging
+                    if chunk.get("request_id") and not request_id:
+                        request_id = chunk.get("request_id")
+                    
+                    # Handle different chunk types
+                    if chunk.get("type") == "token":
+                        # Stream individual tokens
+                        accumulated_text += chunk.get("content", "")
+                        formatted_chunk = format_streaming_response({
+                            "type": "token",
+                            "content": chunk.get("content", ""),
+                            "accumulated": accumulated_text,
+                            "badge_id": badge_id
+                        })
+                        yield formatted_chunk
+                        
+                    elif chunk.get("type") == "final":
+                        # Process the final response with selective field update
+                        try:
+                            # Extract and parse JSON from the accumulated text
+                            raw_response = accumulated_text
+                            
+                            # Try to extract JSON from the accumulated text
+                            try:
+                                # Look for JSON content between ```json and ```
+                                json_start = raw_response.find('```json')
+                                json_end = raw_response.find('```', json_start + 7)
+                                
+                                if json_start != -1 and json_end != -1:
+                                    json_content = raw_response[json_start + 7:json_end].strip()
+                                    regenerated_json = json.loads(json_content)
+                                else:
+                                    # Fallback: try to extract JSON from the full response
+                                    regenerated_json = extract_json_from_response(raw_response)
+                                
+                                raw_model_output_str = raw_response
+                            except json.JSONDecodeError as e:
+                                logger.error(f"Failed to parse JSON from accumulated text: {e}")
+                                error_chunk = {
+                                    "type": "error",
+                                    "content": f"Failed to parse JSON from response: {str(e)}",
+                                    "badge_id": badge_id
+                                }
+                                yield format_streaming_response(error_chunk)
+                                return
+                            
+                            # Normalize regenerated JSON
+                            regenerated_json = _normalize_badge_json(regenerated_json)
+                            
+                            # Use regenerated data directly
+                            regenerated_json["selected_parameters"] = current_params
+                            regenerated_json["processed_course_input"] = processed_content
+
+                            # Validate regenerated badge data
+                            try:
+                                validated = BadgeValidated(
+                                    badge_name=regenerated_json.get("badge_name", ""),
+                                    badge_description=regenerated_json.get("badge_description", ""),
+                                    criteria=regenerated_json.get("criteria", {}),
+                                    raw_model_output=raw_model_output_str
+                                )
+                            except ValidationError as ve:
+                                logger.warning("Badge validation failed: %s", ve)
+                                error_chunk = {
+                                    "type": "error",
+                                    "content": f"Badge schema validation error: {ve}",
+                                    "badge_id": badge_id
+                                }
+                                yield format_streaming_response(error_chunk)
+                                return
+
+                            # Always regenerate image for regenerated badges
+                            image_type = random.choice(["text_overlay", "icon_based"])
+                            logger.info(f"Regenerating badge with image type: {image_type}")
+
+                            if image_type == "icon_based":
+                                icon_suggestions_result = await get_icon_suggestions_for_badge(
+                                    badge_name=validated.badge_name,
+                                    badge_description=validated.badge_description,
+                                    custom_instructions=request.custom_instructions or "",
+                                    top_k=3
+                                )
+                                
+                                image_config_wrapper = await generate_icon_image_config(
+                                    validated.badge_name,
+                                    validated.badge_description,
+                                    icon_suggestions_result,
+                                    institution or ""
+                                )
+                                
+                                image_config = image_config_wrapper.get("config", {})
+                                
+                            else:  # text_overlay
+                                optimized_text = await optimize_badge_text({
+                                    "badge_name": validated.badge_name,
+                                    "badge_description": validated.badge_description,
+                                    "institution": institution or ""
+                                })
+                                
+                                image_config_wrapper = await generate_text_image_config(
+                                    validated.badge_name,
+                                    validated.badge_description,
+                                    optimized_text,
+                                    institution or ""
+                                )
+                                
+                                image_config = image_config_wrapper.get("config", {})
+
+                            image_base64 = await generate_badge_image(image_config)
+                            logger.info(f"Image regenerated | base64_len={len(image_base64) if isinstance(image_base64, str) else 0}")
+
+                            # Transform to new JSON schema format
+                            result = BadgeResponse(
+                                credentialSubject={
+                                    "achievement": {
+                                        "criteria": validated.criteria,
+                                        "description": validated.badge_description,
+                                        "image": {
+                                            "id": f"https://example.com/achievements/badge_{str(uuid.uuid4())}/image",
+                                            "image_base64": image_base64
+                                        },
+                                        "name": validated.badge_name
+                                    }
+                                },
+                                imageConfig=image_config,
+                                badge_id=str(uuid.uuid4())
+                            )
+
+                            # Store in history
+                            history_entry = {
+                                "id": len(badge_history) + 1,
+                                "timestamp": datetime.now().isoformat(),
+                                "course_input": course_input,
+                                "processed_course_input": regenerated_json.get("processed_course_input", processed_content),
+                                "regeneration_type": "custom_instruction",
+                                "custom_instructions": request.custom_instructions,
+                                "institution": institution,
+                                "selected_image_type": image_type,
+                                "selected_parameters": regenerated_json.get("selected_parameters", {}),
+                                "badge_id": badge_id,
+                                "result": result,
+                                "generation_time": time.time() - start_time
+                            }
+                            badge_history.append(history_entry)
+                            
+                            if len(badge_history) > 50:
+                                badge_history.pop(0)
+
+                            # Stream the final result
+                            try:
+                                # Convert result to dict safely
+                                if hasattr(result, 'dict'):
+                                    result_dict = result.dict()
+                                elif hasattr(result, '__dict__'):
+                                    result_dict = result.__dict__
+                                else:
+                                    result_dict = dict(result) if isinstance(result, dict) else {}
+                                
+                                final_chunk = {
+                                    "type": "final",
+                                    "content": result_dict,
+                                    "badge_id": badge_id,
+                                    "generation_time": time.time() - start_time
+                                }
+                                yield format_streaming_response(final_chunk)
+                                
+                            except Exception as dict_error:
+                                logger.error(f"Error converting result to dict: {dict_error}")
+                                # Fallback: create a simple response
+                                fallback_result = {
+                                    "credentialSubject": {
+                                        "achievement": {
+                                            "criteria": validated.criteria,
+                                            "description": validated.badge_description,
+                                            "image": {
+                                                "id": f"https://example.com/achievements/badge_{badge_id}/image",
+                                                "image_base64": image_base64
+                                            },
+                                            "name": validated.badge_name
+                                        }
+                                    },
+                                    "imageConfig": image_config,
+                                    "badge_id": badge_id
+                                }
+                                
+                                final_chunk = {
+                                    "type": "final",
+                                    "content": fallback_result,
+                                    "badge_id": badge_id,
+                                    "generation_time": time.time() - start_time
+                                }
+                                yield format_streaming_response(final_chunk)
+                            
+                            logger.info(f"Regenerated badge ID {badge_id}: '{validated.badge_name}'")
+                            
+                        except Exception as e:
+                            logger.error(f"Error processing final response: {e}", exc_info=True)
+                            error_chunk = {
+                                "type": "error",
+                                "content": f"Error processing final response: {str(e)}",
+                                "badge_id": badge_id,
+                                "error_details": str(e)
+                            }
+                            yield format_streaming_response(error_chunk)
+                            
+                    elif chunk.get("type") == "error":
+                        # Stream error chunks
+                        yield format_streaming_response(chunk)
+                
+                # Log successful completion
+                log_response("Streaming badge regeneration", True, request_id)
+                
+            except Exception as e:
+                # Handle streaming errors
+                error_chunk = {
+                    "type": "error",
+                    "content": f"Streaming regeneration failed: {str(e)}",
+                    "request_id": request_id,
+                    "badge_id": badge_id
+                }
+                yield format_streaming_response(error_chunk)
+                log_response("Streaming badge regeneration", False, request_id)
+        
+        # Create streaming response
+        return create_streaming_response(generate_stream_response())
+        
+    except ValueError as e:
+        # Handle validation errors
+        error_msg = f"Validation error: {str(e)}"
+        logger.error(error_msg)
+        raise HTTPException(status_code=400, detail=error_msg)
+        
+    except Exception as e:
+        # Handle other errors
+        log_response("Streaming badge regeneration", False, request_id)
+        raise handle_error(e, "Streaming badge regeneration", request_id)
+

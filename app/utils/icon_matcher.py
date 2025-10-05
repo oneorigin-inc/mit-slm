@@ -1,7 +1,7 @@
 import json
 import logging
 from typing import Dict, Any, List
-from app.utils.similarity import calculate_similarity
+from app.utils.similarity import calculate_batch_similarity
 from app.services.text_processor import preprocess_text
 
 logger = logging.getLogger(__name__)
@@ -515,18 +515,44 @@ ICONS_DATA =[
   ]
 
 
-# Basic icon fallback for when JSON not loaded
+# Complete icon keywords fallback for all 36 icons
 ICON_KEYWORDS = {
-    "code.png": ["programming", "coding", "software", "development", "script", "algorithm"],
-    "atom.png": ["science", "research", "lab", "study", "chemistry", "physics"],
-    "leadership.png": ["leadership", "manage", "team", "lead", "guide", "organize"],
-    "calculator.png": ["math", "calculate", "number", "statistic", "arithmetic"],
-    "color-palette.png": ["art", "design", "creative", "visual", "graphics"],
-    "trophy.png": ["achievement", "winner", "champion", "success", "excellence"],
-    "graduation-cap.png": ["graduation", "academic", "education", "degree"],
-    "brain.png": ["intelligence", "thinking", "cognitive", "psychology"],
-    "gear.png": ["engineering", "mechanical", "technical", "system"],
-    "shield.png": ["security", "protection", "safety", "cybersecurity"]
+    "atom.png": ["science", "chemistry", "physics", "STEM", "molecular", "research", "atomic", "nuclear", "lab"],
+    "binary-code.png": ["programming", "coding", "computer", "binary", "digital", "technology", "software", "data"],
+    "brackets.png": ["code", "programming", "development", "syntax", "HTML", "JavaScript", "web", "developer"],
+    "brain.png": ["intelligence", "thinking", "cognitive", "psychology", "neuroscience", "mental", "learning", "knowledge"],
+    "calculator.png": ["math", "calculation", "numbers", "accounting", "statistics", "arithmetic", "algebra", "finance"],
+    "checkmark.png": ["complete", "done", "success", "verified", "achieved", "finished", "approved", "passed"],
+    "clock.png": ["time", "management", "punctual", "deadline", "schedule", "timely", "efficient", "duration"],
+    "cloud-service.png": ["cloud", "computing", "storage", "online", "SaaS", "AWS", "Azure", "infrastructure"],
+    "code.png": ["programming", "software", "development", "coding", "script", "algorithm", "function", "engineer"],
+    "color-palette.png": ["art", "design", "creative", "colors", "painting", "visual", "aesthetic", "graphics"],
+    "crown.png": ["leader", "champion", "winner", "best", "top", "excellence", "master", "first"],
+    "diamond.png": ["premium", "quality", "rare", "valuable", "exceptional", "brilliant", "precious", "elite"],
+    "dna.png": ["biology", "genetics", "DNA", "life", "biotechnology", "medical", "research", "genome"],
+    "energy.png": ["energy", "power", "physics", "renewable", "sustainability", "electric", "dynamic", "vigor"],
+    "gear.png": ["engineering", "mechanical", "settings", "technical", "machinery", "process", "system", "configuration"],
+    "gem.png": ["precious", "special", "unique", "valuable", "rare", "jewel", "treasure", "exceptional"],
+    "globe.png": ["global", "world", "geography", "international", "earth", "culture", "diversity", "environment"],
+    "goal.png": ["goal", "target", "objective", "achievement", "milestone", "purpose", "aim", "success"],
+    "graduation-cap.png": ["graduation", "academic", "education", "degree", "diploma", "university", "college", "scholar"],
+    "growth.png": ["growth", "progress", "improvement", "development", "advance", "evolve", "increase", "expand"],
+    "handshake.png": ["collaboration", "teamwork", "partnership", "cooperation", "agreement", "networking", "deal", "alliance"],
+    "ink-bottle.png": ["writing", "literature", "poetry", "creative", "author", "journalism", "essay", "composition"],
+    "leadership.png": ["leader", "management", "guide", "direct", "organize", "command", "influence", "inspire"],
+    "medal.png": ["medal", "award", "honor", "recognition", "prize", "achievement", "competition", "distinction"],
+    "microscope.png": ["research", "laboratory", "biology", "analysis", "investigation", "microscopy", "study", "chemistry"],
+    "music_note.png": ["music", "note", "melody", "rhythm", "composition", "performance", "audio", "song"],
+    "presentation.png": ["presentation", "speaking", "communication", "teaching", "lecture", "seminar", "pitch", "demonstration"],
+    "robot.png": ["robot", "AI", "automation", "robotics", "technology", "innovation", "machine", "artificial"],
+    "shield.png": ["security", "protection", "safety", "defense", "cybersecurity", "guard", "secure", "trust"],
+    "solution.png": ["solution", "solve", "answer", "resolve", "fix", "innovation", "breakthrough", "discovery"],
+    "spaceship.png": ["space", "rocket", "aerospace", "exploration", "innovation", "astronomy", "future", "launch"],
+    "speech_bubble.png": ["communication", "dialogue", "discussion", "chat", "conversation", "feedback", "talk", "message"],
+    "star.png": ["star", "excellence", "outstanding", "favorite", "quality", "special", "top", "best"],
+    "teamwork.png": ["team", "collaboration", "group", "together", "cooperative", "collective", "unity", "synergy"],
+    "thumbs-up.png": ["approval", "positive", "good", "like", "agree", "encourage", "satisfied", "yes"],
+    "trophy.png": ["trophy", "winner", "champion", "victory", "first", "competition", "prize", "tournament"]
 }
 
 def load_icons_data(json_file_path: str):
@@ -535,13 +561,13 @@ def load_icons_data(json_file_path: str):
     try:
         with open(json_file_path, 'r', encoding='utf-8') as f:
             ICONS_DATA = json.load(f)
-        print(f"✓ Loaded {len(ICONS_DATA)} icons from {json_file_path}")
+        logger.info(f"✓ Loaded {len(ICONS_DATA)} icons from {json_file_path}")
     except FileNotFoundError:
-        print(f"⚠ Icons file not found: {json_file_path}, using keyword fallback")
+        logger.warning(f"⚠ Icons file not found: {json_file_path}, using built-in data")
     except json.JSONDecodeError as e:
-        print(f"⚠ Invalid JSON in icons file: {e}, using keyword fallback")
+        logger.error(f"⚠ Invalid JSON in icons file: {e}, using built-in data")
     except Exception as e:
-        print(f"⚠ Error loading icons: {e}, using keyword fallback")
+        logger.error(f"⚠ Error loading icons: {e}, using built-in data")
 
 async def get_icon_suggestions_for_badge(
     badge_name: str,
@@ -549,71 +575,106 @@ async def get_icon_suggestions_for_badge(
     custom_instructions: str = "",
     top_k: int = 3
 ) -> Dict[str, Any]:
-    """Get icon suggestions using TF-IDF similarity when ICONS_DATA is available, else keyword matching"""
+    """Get icon suggestions using TF-IDF similarity"""
     combined_text = f"{badge_name} {badge_description} {custom_instructions}"
     
-    if ICONS_DATA:
-        # Use TF-IDF similarity with full icon data
+    if ICONS_DATA and len(ICONS_DATA) > 0:
+        # Use batch TF-IDF similarity with full icon data
         processed_query = preprocess_text(combined_text)
         
-        similarities = []
+        # Prepare all icon texts
+        icon_texts = []
         for icon in ICONS_DATA:
-            # Combine description and keywords for matching
-            icon_text = f"{icon.get('description', '')} {' '.join(icon.get('keywords', []))}"
-            similarity = calculate_similarity(processed_query, icon_text)
+            icon_keywords = ' '.join(icon.get('keywords', []))
+            icon_use_cases = ' '.join(icon.get('use_cases', []))
+            icon_text = f"{icon.get('description', '')} {icon_keywords} {icon_use_cases}"
+            icon_texts.append(icon_text)
+        
+        # Calculate all similarities at once
+        from app.utils.similarity import calculate_batch_similarity
+        similarity_scores = calculate_batch_similarity(processed_query, icon_texts)
+        
+        # Build results with similarity scores
+        similarities = []
+        for idx, icon in enumerate(ICONS_DATA):
             similarities.append({
                 "name": icon["name"],
                 "display_name": icon.get("display_name", icon["name"]),
                 "description": icon.get("description", ""),
                 "category": icon.get("category", ""),
-                "similarity_score": similarity
+                "keywords": icon.get("keywords", []),
+                "similarity_score": round(float(similarity_scores[idx]), 4)  # Convert to float and round
             })
         
-        # Sort by similarity and get top suggestions
+        # Sort by similarity score (descending)
         similarities.sort(key=lambda x: x["similarity_score"], reverse=True)
         
-        return {
-            "suggested_icon": similarities[0] if similarities else {
-                "name": "trophy.png", 
+        # Get top result and alternatives
+        top_icon = similarities[0] if similarities else None
+        alternatives = similarities[1:top_k] if len(similarities) > 1 else []
+        
+        # Fallback if no good match (similarity too low)
+        if not top_icon or top_icon["similarity_score"] < 0.1:
+            logger.warning(f"Low similarity score for badge: {badge_name}. Using default trophy icon.")
+            top_icon = {
+                "name": "trophy.png",
                 "display_name": "Trophy",
-                "description": "Default achievement icon", 
+                "description": "Default achievement icon",
+                "category": "achievement",
+                "keywords": ["achievement", "success"],
                 "similarity_score": 0.5
-            },
-            "alternatives": similarities[1:top_k] if len(similarities) > 1 else [],
-            "matching_method": "tfidf_similarity",
-            "total_icons_available": len(ICONS_DATA)
+            }
+        
+        return {
+            "suggested_icon": top_icon,
+            "alternatives": alternatives,
+            "matching_method": "tfidf_batch_similarity",
+            "total_icons_available": len(ICONS_DATA),
+            "query_processed": processed_query[:100]
         }
     
     else:
-        # Fallback to keyword matching
+        # Fallback to keyword matching (same as before)
+        logger.info("Using keyword fallback for icon selection")
         combined_text_lower = combined_text.lower()
         
-        # Score icons based on keyword matches
         scores = {}
         for icon, keywords in ICON_KEYWORDS.items():
-            score = sum(1 for keyword in keywords if keyword in combined_text_lower)
+            score = sum(1 for keyword in keywords if keyword.lower() in combined_text_lower)
             if score > 0:
                 scores[icon] = score
         
-        # Get top suggestions
         sorted_icons = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         
         if sorted_icons:
             suggested = sorted_icons[0][0]
-            alternatives = [{"name": icon, "similarity_score": score/10} for icon, score in sorted_icons[1:top_k]]
+            normalized_score = min(sorted_icons[0][1] / 8.0, 1.0)
+            alternatives = [
+                {
+                    "name": icon,
+                    "display_name": icon.replace('.png', '').replace('-', ' ').title(),
+                    "similarity_score": round(min(score / 8.0, 1.0), 4)
+                }
+                for icon, score in sorted_icons[1:top_k]
+            ]
         else:
+            logger.warning(f"No keyword matches for badge: {badge_name}. Using default trophy icon.")
             suggested = "trophy.png"
-            alternatives = [{"name": "goal.png", "similarity_score": 0.5}]
+            normalized_score = 0.5
+            alternatives = [
+                {"name": "goal.png", "display_name": "Goal", "similarity_score": 0.4},
+                {"name": "star.png", "display_name": "Star", "similarity_score": 0.4}
+            ]
         
         return {
             "suggested_icon": {
                 "name": suggested,
-                "display_name": suggested.replace('.png', '').title(),
+                "display_name": suggested.replace('.png', '').replace('-', ' ').title(),
                 "description": f"Contextually selected icon for {badge_name}",
-                "similarity_score": 0.7
+                "category": "achievement",
+                "similarity_score": round(normalized_score, 4)
             },
             "alternatives": alternatives,
             "matching_method": "keyword_fallback",
             "total_icons_available": len(ICON_KEYWORDS)
         }
-
