@@ -30,7 +30,6 @@ class Settings(BaseSettings):
     
     # Style Descriptions
     STYLE_DESCRIPTIONS: Dict = {
-<<<<<<< HEAD
     "Professional": "Style Instructions: Use formal, business-oriented language emphasizing industry standards and career advancement. Write in a professional corporate tone. Focus on business value, organizational impact, and career development. Use formal language suitable for executive presentations and HR documentation. Badge Naming: Create formal, professional titles that emphasize credibility and career value (e.g., 'Executive Leadership Certificate', 'Strategic Business Analyst Credential', 'Professional Project Management Badge'). Use titles that would appear on a resume or LinkedIn profile.",
     
     "Academic": "Style Instructions: Use scholarly language emphasizing learning outcomes and academic rigor. Adopt an academic writing style with emphasis on educational objectives and pedagogical frameworks. Reference learning theories and competency standards. Use precise educational terminology. Badge Naming: Create academic honors and scholarly titles that convey intellectual achievement (e.g., 'Research Excellence Award', 'Advanced Studies in Biology', 'Scholar of Data Science', 'Academic Achievement in Literature'). Use titles common in educational institutions and academic transcripts.",
@@ -41,14 +40,6 @@ class Settings(BaseSettings):
     
     "Creative": "Style Instructions: Use engaging language highlighting innovation and problem-solving. Write in an inspiring tone that celebrates creativity, innovation, and breakthrough thinking. Emphasize unique approaches, original solutions, and forward-thinking mindset. Use energetic and motivational language. Badge Naming: Create inspiring, imaginative titles that energize and celebrate innovation (e.g., 'Innovation Pioneer', 'Creative Problem-Solver', 'Design Thinking Champion', 'Digital Storytelling Virtuoso'). Use dynamic, memorable titles that spark enthusiasm and highlight originality."
 }
-=======
-        "Professional": "Use formal, business-oriented language emphasizing industry standards and career advancement. Badge Name: polished, corporate-sounding conveying expertise.",
-        "Academic": "Use scholarly language emphasizing learning outcomes and academic rigor. Badge Name: scholarly, intellectual suggesting research excellence.",
-        "Industry": "Use sector-specific terminology focusing on job-readiness and practical applications. Badge Name: practical, sector-specific emphasizing real-world application.",
-        "Technical": "Use precise technical language with emphasis on tools and measurable outcomes. Badge Name: precise, tech-forward highlighting specific skills.",
-        "Creative": "Use engaging language highlighting innovation and problem-solving. Badge Name: imaginative, distinctive showcasing innovation."
-    }
->>>>>>> 0f9a50302e924751348668aad984e4b7dd0d3130
     
     TONE_DESCRIPTIONS: Dict = {
         "Authoritative": "Confident, definitive tone with institutional credibility.",
