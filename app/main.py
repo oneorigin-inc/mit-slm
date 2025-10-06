@@ -1,9 +1,18 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.routers import badges, health
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.logging import setup_logging
+from app.services.ollama_client import preload_model
 
-app = FastAPI(title="Badge Generator API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await preload_model()
+    yield
+    # Shutdown (if needed)
+
+app = FastAPI(title="Badge Generator API", version="1.0.0", lifespan=lifespan)
 
 # Setup logging
 setup_logging()

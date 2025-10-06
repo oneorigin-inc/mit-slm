@@ -16,6 +16,7 @@ class Settings(BaseSettings):
         "num_predict": 1024,
         "repeat_penalty": 1.05,
         "num_ctx": 4096,
+        "keep_alive": "7m",
         "stop": ["<|end|>", "}\n\n"]
     }
     

@@ -164,3 +164,20 @@ async def call_model_async(prompt: str, config: Optional[Dict] = None) -> str:
 async def call_model_with_params_async(prompt: str, **kwargs) -> str:
     """Convenience function for model calls with specific parameters"""
     return await ollama_client.generate_with_parameters(prompt, **kwargs)
+
+async def preload_model() -> bool:
+    """Preload the model into memory using streaming to minimize resource usage"""
+    try:
+        logger.info(f"Preloading model {settings.MODEL_NAME}...")
+        # Use streaming with a minimal prompt to load model
+        async for chunk in ollama_client.generate_stream("test", max_tokens=1):
+            if chunk.get("type") == "final":
+                logger.info(f"Model {settings.MODEL_NAME} preloaded successfully")
+                return True
+            elif chunk.get("type") == "error":
+                logger.error(f"Failed to preload model: {chunk.get('content')}")
+                return False
+        return True
+    except Exception as e:
+        logger.error(f"Model preload failed: {e}")
+        return False
