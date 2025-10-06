@@ -55,7 +55,7 @@ async def generate_badge_image(image_config: Dict[str, Any]) -> str:
             response = await client.post(
                 "http://localhost:3001/api/v1/badge/generate",
                 json=image_config,
-                timeout=30.0
+                timeout=10.0
             )
             response.raise_for_status()
             result = response.json()
@@ -588,14 +588,14 @@ Parameters:
                                         "criteria": validated.criteria,
                                         "description": validated.badge_description,
                                         "image": {
-                                            "id": f"https://example.com/achievements/badge_{str(uuid.uuid4())}/image",
+                                            "id": f"https://example.com/achievements/badge_{badge_id}/image",
                                             "image_base64": image_base64
                                         },
                                         "name": validated.badge_name
                                     }
                                 },
                                 imageConfig=image_config,
-                                badge_id=str(uuid.uuid4())
+                                badge_id=badge_id
                             )
 
                             # Store in history
@@ -912,14 +912,14 @@ Parameters:
                                         "criteria": validated.criteria,
                                         "description": validated.badge_description,
                                         "image": {
-                                            "id": f"https://example.com/achievements/badge_{str(uuid.uuid4())}/image",
+                                            "id": f"https://example.com/achievements/badge_{badge_id}/image",
                                             "image_base64": image_base64
                                         },
                                         "name": validated.badge_name
                                     }
                                 },
                                 imageConfig=image_config,
-                                badge_id=str(uuid.uuid4())
+                                badge_id=badge_id
                             )
 
                             # Store in history
