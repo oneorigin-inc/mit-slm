@@ -134,7 +134,7 @@ Institution: "{badge_data.get('institution', '')}"
 
 Generate optimized text for image overlay:
 - Short title (max {max_title_chars} chars)
-- Brief description (1-2 lines)
+- Brief description (25-30 characters max)
 - Institution display name
 - Key achievement phrase
 
