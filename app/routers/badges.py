@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ValidationError
 import uuid
 
-from app.models.requests import BadgeRequest, RegenerationRequest, AppendDataRequest
+from app.models.requests import BadgeRequest, RegenerationRequest, AppendDataRequest, FieldRegenerateRequest
 from app.models.badge import BadgeResponse, BadgeValidated
 from app.services.badge_generator import (
     generate_badge_metadata_async, 
@@ -1030,4 +1030,216 @@ Parameters:
         # Handle other errors
         log_response("Streaming badge regeneration", False, request_id)
         raise handle_error(e, "Streaming badge regeneration", request_id)
+
+def get_badge_from_history(badge_id: str) -> Dict[str, Any]:
+    """Retrieve badge from history by badge_id"""
+    for entry in badge_history:
+        if entry.get("badge_id") == badge_id:
+            return entry
+    raise HTTPException(status_code=404, detail=f"Badge with ID {badge_id} not found")
+
+def build_field_specific_prompt(field: str, original_badge: Dict[str, Any], custom_instructions: Optional[str] = None) -> str:
+    """Build a focused prompt for regenerating a specific field"""
+
+    # Extract current badge data
+    result = original_badge.get("result", {})
+    if hasattr(result, 'dict'):
+        result_dict = result.dict()
+    elif hasattr(result, '__dict__'):
+        result_dict = result.__dict__
+    else:
+        result_dict = result
+
+    achievement = result_dict.get("credentialSubject", {}).get("achievement", {})
+    current_title = achievement.get("name", "")
+    current_description = achievement.get("description", "")
+    current_criteria = achievement.get("criteria", {})
+
+    course_input = original_badge.get("course_input", "")
+
+    # Field-specific prompts
+    field_prompts = {
+        "title": "Generate ONLY a new, concise badge title/name. Keep it under 50 characters.",
+        "description": "Generate ONLY a new badge description. Make it clear and comprehensive.",
+        "criteria": "Generate ONLY new achievement criteria text. Focus on what learners must demonstrate."
+    }
+
+    # Build context
+    context = f"""Current Badge:
+- Title: {current_title}
+- Description: {current_description}
+- Criteria: {current_criteria.get('narrative', '') if isinstance(current_criteria, dict) else current_criteria}
+
+Original Course Content: {course_input}
+
+Task: {field_prompts[field]}"""
+
+    if custom_instructions:
+        context += f"\nAdditional Instructions: {custom_instructions}"
+
+    context += f"\n\nRespond with ONLY the new {field} text, no JSON, no formatting, just the raw text:"
+
+    return context
+
+def merge_field_update(original_badge: Dict[str, Any], field: str, new_value: str) -> BadgeResponse:
+    """Create updated badge with only the specified field changed"""
+
+    # Extract original badge data
+    result = original_badge.get("result", {})
+    if hasattr(result, 'dict'):
+        result_dict = result.dict()
+    elif hasattr(result, '__dict__'):
+        result_dict = result.__dict__
+    else:
+        result_dict = result
+
+    # Create new badge with updated field
+    achievement = result_dict.get("credentialSubject", {}).get("achievement", {})
+
+    if field == "title":
+        achievement["name"] = new_value.strip()
+    elif field == "description":
+        achievement["description"] = new_value.strip()
+    elif field == "criteria":
+        achievement["criteria"] = {"narrative": new_value.strip()}
+
+    # Generate new badge ID
+    new_badge_id = str(uuid.uuid4())
+
+    # Create updated response
+    updated_badge = BadgeResponse(
+        credentialSubject={
+            "achievement": achievement
+        },
+        imageConfig=result_dict.get("imageConfig", {}),
+        badge_id=new_badge_id
+    )
+
+    return updated_badge
+
+@router.post("/regenerate-field", response_model=BadgeResponse)
+async def regenerate_field(request: FieldRegenerateRequest):
+    """Regenerate a specific field of an existing badge"""
+    start_time = time.time()
+
+    try:
+        # Get original badge from history
+        original_badge = get_badge_from_history(request.badge_id)
+
+        # Build field-specific prompt
+        prompt = build_field_specific_prompt(
+            field=request.field_to_change,
+            original_badge=original_badge,
+            custom_instructions=request.custom_instructions
+        )
+
+        # Import ollama service
+        from app.services.ollama_client import ollama_client
+        MODEL_CONFIG = settings.MODEL_CONFIG
+
+        # Generate new field value
+        new_value = ""
+        async for chunk in ollama_client.generate_stream(
+            content=prompt,
+            temperature=MODEL_CONFIG.get("temperature", 0.15),
+            max_tokens=200,  # Smaller for single field
+            top_p=MODEL_CONFIG.get("top_p", 0.8),
+            top_k=MODEL_CONFIG.get("top_k", 30),
+            repeat_penalty=MODEL_CONFIG.get("repeat_penalty", 1.05)
+        ):
+            if chunk.get("type") == "token":
+                new_value += chunk.get("content", "")
+            elif chunk.get("type") == "final":
+                break
+            elif chunk.get("type") == "error":
+                raise HTTPException(status_code=500, detail=f"Model error: {chunk.get('content')}")
+
+        # Clean up the generated value
+        new_value = new_value.strip()
+        if not new_value:
+            raise HTTPException(status_code=500, detail="Model generated empty response")
+
+        # Create updated badge
+        updated_badge = merge_field_update(
+            original_badge=original_badge,
+            field=request.field_to_change,
+            new_value=new_value
+        )
+
+        # # Regenerate image if title or description changed
+        # if request.field_to_change in ["title", "description"]:
+        #     achievement = updated_badge.credentialSubject["achievement"]
+
+        #     # Choose random image type
+        #     image_type = random.choice(["text_overlay", "icon_based"])
+
+        #     if image_type == "icon_based":
+        #         icon_suggestions = await get_icon_suggestions_for_badge(
+        #             badge_name=achievement["name"],
+        #             badge_description=achievement["description"],
+        #             custom_instructions=request.custom_instructions or "",
+        #             top_k=3
+        #         )
+
+        #         image_config_wrapper = await generate_icon_image_config(
+        #             achievement["name"],
+        #             achievement["description"],
+        #             icon_suggestions,
+        #             request.institution or original_badge.get("institution", "")
+        #         )
+
+        #         image_config = image_config_wrapper.get("config", {})
+
+        #     else:  # text_overlay
+        #         optimized_text = await optimize_badge_text({
+        #             "badge_name": achievement["name"],
+        #             "badge_description": achievement["description"],
+        #             "institution": request.institution or original_badge.get("institution", "")
+        #         })
+
+        #         image_config_wrapper = await generate_text_image_config(
+        #             achievement["name"],
+        #             achievement["description"],
+        #             optimized_text,
+        #             request.institution or original_badge.get("institution", "")
+        #         )
+
+        #         image_config = image_config_wrapper.get("config", {})
+
+        #     # Generate new image
+        #     image_base64 = await generate_badge_image(image_config)
+
+        #     # Update badge with new image
+        #     updated_badge.credentialSubject["achievement"]["image"] = {
+        #         "id": f"https://example.com/achievements/badge_{updated_badge.badge_id}/image",
+        #         "image_base64": image_base64
+        #     }
+        #     updated_badge.imageConfig = image_config
+
+        # Store in history
+        history_entry = {
+            "id": len(badge_history) + 1,
+            "timestamp": datetime.now().isoformat(),
+            "parent_badge_id": request.badge_id,
+            "field_changed": request.field_to_change,
+            "change_type": "field_regeneration",
+            "custom_instructions": request.custom_instructions,
+            "institution": request.institution,
+            "badge_id": updated_badge.badge_id,
+            "result": updated_badge,
+            "generation_time": time.time() - start_time
+        }
+        badge_history.append(history_entry)
+
+        if len(badge_history) > 50:
+            badge_history.pop(0)
+
+        logger.info(f"Regenerated {request.field_to_change} for badge {updated_badge.badge_id}")
+        return updated_badge
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Unexpected error in /regenerate-field: %s", e)
+        raise HTTPException(status_code=500, detail=f"Field regeneration error: {str(e)}")
 
