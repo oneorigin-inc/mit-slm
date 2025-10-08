@@ -10,8 +10,8 @@ cd "$(dirname "$0")"
 
 # Check if GPU configuration exists in compose file
 check_gpu_config() {
-    if [ -f "docker/docker-compose.yml" ]; then
-        local gpu_config=$(grep "CUDA_VISIBLE_DEVICES=" docker/docker-compose.yml | grep -v "CUDA_VISIBLE_DEVICES=$" | grep -v "CUDA_VISIBLE_DEVICES= *$")
+    if [ -f "docker-compose.yml" ]; then
+        local gpu_config=$(grep "CUDA_VISIBLE_DEVICES=" docker-compose.yml | grep -v "CUDA_VISIBLE_DEVICES=$" | grep -v "CUDA_VISIBLE_DEVICES= *$")
         if [ -n "$gpu_config" ]; then
             local gpu_uuid=$(echo "$gpu_config" | head -1 | sed 's/.*CUDA_VISIBLE_DEVICES=//' | sed 's/ *$//')
             echo "GPU configuration found in compose file: $gpu_uuid"
@@ -72,9 +72,9 @@ for arg in "$@"; do
 done
 
 # Check Docker Compose file exists
-if [ ! -f "docker/docker-compose.yml" ]; then
-    echo "ERROR: docker/docker-compose.yml not found"
-    echo "Please ensure the compose file exists in the docker/ directory"
+if [ ! -f "docker-compose.yml" ]; then
+    echo "ERROR: docker-compose.yml not found"
+    echo "Please ensure the compose file exists in the  directory"
     exit 1
 fi
 
@@ -98,7 +98,7 @@ fi
 echo "Cleaning up existing badge generation services..."
 
 # Get our specific container names from compose file
-COMPOSE_FILE="docker/docker-compose.yml"
+COMPOSE_FILE="docker-compose.yml"
 PROJECT_NAME=$(basename "$(pwd)" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')
 
 # Stop and remove only our specific containers by name
@@ -108,7 +108,7 @@ docker rm ollama-service badge-api "${PROJECT_NAME}-ollama-service-1" "${PROJECT
 
 # Stop our Docker Compose services specifically  
 echo "Stopping Docker Compose services..."
-docker compose -f docker/docker-compose.yml down 2>/dev/null || true
+docker compose -f docker-compose.yml down 2>/dev/null || true
 
 # Remove only our specific images (if clean flag is set)
 if [ -n "$CLEAN_FLAG" ]; then
@@ -143,11 +143,11 @@ echo "✅ Badge generation system cleanup complete (other Docker containers pres
 
 # Start services directly with Docker Compose
 echo "Starting Docker services..."
-echo "Command: docker compose -f docker/docker-compose.yml up $BUILD_FLAG -d"
-if ! docker compose -f docker/docker-compose.yml up $BUILD_FLAG -d; then
+echo "Command: docker compose -f docker-compose.yml up $BUILD_FLAG -d"
+if ! docker compose -f docker-compose.yml up $BUILD_FLAG -d; then
     echo "ERROR: Failed to start Docker services"
     echo "Checking docker-compose.yml for issues..."
-    docker compose -f docker/docker-compose.yml config 2>&1 || true
+    docker compose -f docker-compose.yml config 2>&1 || true
     exit 1
 fi
 
@@ -239,7 +239,7 @@ echo ""
 echo "📊 Configuration:"
 echo "  Mode: $( [ "$GPU_CONFIGURED" = "true" ] && echo "GPU ENABLED ✅" || echo "CPU MODE 🖥️" )"
 if [ "$GPU_CONFIGURED" = "true" ]; then
-    gpu_uuid=$(grep "CUDA_VISIBLE_DEVICES=" docker/docker-compose.yml | head -1 | sed 's/.*CUDA_VISIBLE_DEVICES=//' | sed 's/ *$//')
+    gpu_uuid=$(grep "CUDA_VISIBLE_DEVICES=" docker-compose.yml | head -1 | sed 's/.*CUDA_VISIBLE_DEVICES=//' | sed 's/ *$//')
     echo "  GPU UUID: $gpu_uuid"
 fi
 if [ -n "$BUILD_FLAG" ]; then
@@ -250,8 +250,8 @@ if [ -n "$CLEAN_FLAG" ]; then
 fi
 echo ""
 echo "🔧 Management Commands:"
-echo "  Stop: docker compose -f docker/docker-compose.yml down"
-echo "  Logs: docker compose -f docker/docker-compose.yml logs -f"
+echo "  Stop: docker compose -f docker-compose.yml down"
+echo "  Logs: docker compose -f docker-compose.yml logs -f"
 echo "  GPU Check: docker exec ollama-service nvidia-smi"
 echo "  Model Status: docker exec ollama-service ollama ps"
 echo "  Badge API Status: curl http://localhost:8000/health"

@@ -2,28 +2,26 @@ services:
   ollama:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.ollama
+      dockerfile: Dockerfile.ollama
     image: docker-ollama
     container_name: ollama-service
     ports:
       - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
-      - ../models:/models
-    networks:
-      - badge-network
+      # - ../models:/models
     restart: unless-stopped
     entrypoint: ["/bin/bash", "-c"]
     command: |
       "ollama serve &
        sleep 10 &&
-       ollama create phi4-chat-v1 -f Modelfile &&
+       ollama create phi4-chat -f Modelfile &&
        wait"
 
   badge-api:
     build:
       context: ..
-      dockerfile: docker/Dockerfile
+      dockerfile: Dockerfile
     image: docker-badge-api
     container_name: badge-api
     ports:
@@ -31,16 +29,12 @@ services:
     volumes:
       - ../assets:/app/assets
     environment:
-      - OLLAMA_API_URL=http://ollama:11434/api/generate
+      - OLLAMA_API_URL=http://host.docker.internal:11434/api/generate
     depends_on:
       - ollama
-    networks:
-      - badge-network
+    extra_hosts:              
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
-
-networks:
-  badge-network:
-    driver: bridge
 
 volumes:
   ollama-data:
