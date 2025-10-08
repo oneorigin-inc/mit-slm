@@ -1,7 +1,0 @@
-.DS_Store
-*.gguf
-__pycache__/
-*.pyc
-*.pyo
-*.log
-*.env
