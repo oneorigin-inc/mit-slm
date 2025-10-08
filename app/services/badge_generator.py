@@ -105,9 +105,12 @@ Parameters:
 - Tone: {settings.TONE_DESCRIPTIONS.get(random_params['badge_tone'])}  
 - Level: {settings.LEVEL_DESCRIPTIONS.get(random_params['badge_level'])}
 - Criterion Style: {settings.CRITERION_TEMPLATES.get(random_params['criterion_style'])}"""
+    
+    if request.badge_style:
+        user_content += f"\n- Badge Style: {request.badge_style} , incorporate prominently in both badge name and badge description"
 
     if request.institution:
-        user_content += f"\n- Institution: {request.institution}"
+        user_content += f"\n- Institution: {request.institution} , incorporate prominently in both badge name and badge description for branding"
         
     if request.custom_instructions:
         user_content += f"\n- Special Instructions: {request.custom_instructions}"
@@ -126,25 +129,35 @@ Parameters:
     return result
 
 
-async def optimize_badge_text(badge_data: dict, max_title_chars: int = 25):
+async def optimize_badge_text(badge_data: dict, max_title_chars: int = 30):
     """Optimize badge text for image overlay"""
     prompt = f"""Badge: "{badge_data['badge_name']}"
 Description: "{badge_data['badge_description']}"
 Institution: "{badge_data.get('institution', '')}"
 
-Generate optimized text for image overlay:
-- Short title (max {max_title_chars} chars)
-- Brief description (25-30 characters max)
-- Institution display name
-- Key achievement phrase
+Generate optimized overlay text. CRITICAL: All text must be complete phrases without ellipsis (...) or truncation.
 
-Return JSON format:
+Character Limits:
+- short_title: max {max_title_chars} chars (rephrase if needed, never truncate)
+- brief_description: 25-30 chars
+- institution_display: abbreviated if long
+- achievement_phrase: 20-25 chars (creative slogan or descriptive sentence!)
+
+Achievement Phrase Guidelines:
+- Create catchy slogans, mini-sentences, or descriptive phrases
+- Be inspiring, celebratory, and memorable
+- Vary the structure: questions, statements, calls-to-action
+
+Example: "Healthcare Crisis Navigator: Mastery in…" (BAD) → "Crisis Navigation Expert" (GOOD)
+
+Return JSON:
 {{
-    "short_title": "condensed badge name",
-    "brief_description": "one line summary",
-    "institution_display": "institution name",
-    "achievement_phrase": "motivational phrase"
+    "short_title": "",
+    "brief_description": "",
+    "institution_display": "",
+    "achievement_phrase": ""
 }}"""
+
 
     response = await call_model_async(prompt)
     return extract_json_from_response(response)

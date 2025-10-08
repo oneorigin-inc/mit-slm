@@ -12,6 +12,9 @@ CORE BEHAVIOR:
 - Never include multiple JSON objects - return exactly one complete JSON object
 - Focus on professional educational credentials with detailed, specific criteria
 
+INSTITUTION EMPHASIS:
+- If institution provided: Highlight institutional credibility and authority in badge name and description briefly.
+
 REQUIRED JSON SCHEMA:
 {
   "badge_name": "string - creative, memorable name capturing course essence",
@@ -26,7 +29,7 @@ IMPORTANT: If this covers multiple courses or complex content, create a comprehe
 BADGE CREATION GUIDELINES:
 - For multiple courses: create unifying themes and comprehensive coverage
 - Badge descriptions must include: competencies mastered, technical tools, real-world applications, assessment rigor, employer value, transferable skills
-
+- 
 - Criteria must be specific, measurable, and evidence-based. give clear detailed criterion bullet points if needed in custom instructions.
 DEFAULT: Extract criteria from course content analysis
 - Identify specific topics, skills, tools from course

@@ -429,6 +429,20 @@ ICONS_DATA =[
       ]
     },
     {
+      "name": "emotions.png",
+      "display_name": "Emotions",
+      "category": "social-emotional",
+      "description": "Represents emotional intelligence, empathy, self-awareness, interpersonal skills, and emotional regulation",
+      "keywords": ["emotions", "feelings", "empathy", "emotional", "awareness", "mindfulness", "compassion", "understanding"],
+      "use_cases": [
+        "Emotional intelligence mastery",
+        "Empathy leadership",
+        "Mental health awareness",
+        "Peer support excellence",
+        "Mindfulness practice completion"
+      ]
+    },
+    {
       "name": "spaceship.png",
       "display_name": "Spaceship",
       "category": "innovation",
@@ -511,8 +525,48 @@ ICONS_DATA =[
         "Tournament victor",
         "Grand prize winner"
       ]
-    }
+    },
+    {
+  "name": "art.png",
+  "display_name": "Arts & Culture",
+  "category": "creative-arts",
+  "description": "Represents artistic expression, performing arts, visual arts, music, dance, theater, and cultural activities",
+  "keywords": [
+    "art",
+    "artist",
+    "creative",
+    "acting",
+    "theater",
+    "performance",
+    "singing",
+    "music",
+    "dancing",
+    "dance",
+    "cultural",
+    "culture",
+    "drama",
+    "painting",
+    "drawing",
+    "sculpture",
+    "exhibition",
+    "concert",
+    "recital",
+    "stage",
+    "creative expression"
+  ],
+  "use_cases": [
+    "Art competition winner",
+    "Theater/drama performance excellence",
+    "Music recital or singing achievement",
+    "Dance performance recognition",
+    "Cultural event participation",
+    "Creative showcase winner",
+    "Arts festival achievement",
+    "Gallery exhibition artist",
+    "Performing arts excellence"
   ]
+},
+]
 
 
 # Complete icon keywords fallback for all 36 icons
