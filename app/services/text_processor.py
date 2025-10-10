@@ -4,39 +4,57 @@ from typing import List
 
 logger = logging.getLogger(__name__)
 
-# Text preprocessing setup
-try:
-    import nltk
-    from nltk.corpus import stopwords
-    from nltk.stem import PorterStemmer
-    from nltk.tokenize import word_tokenize
-    
-    required_downloads = ['punkt', 'stopwords']
-    
-    for resource in required_downloads:
-        try:
-            nltk.data.find(f'tokenizers/{resource}' if 'punkt' in resource else f'corpora/{resource}')
-        except LookupError:
-            print(f"Downloading NLTK resource: {resource}")
-            nltk.download(resource, quiet=True)
-    
-    NLTK_AVAILABLE = True
-    STOP_WORDS = set(stopwords.words('english'))
-    STEMMER = PorterStemmer()
-    print("✓ NLTK initialized successfully")
-    
-except ImportError:
-    NLTK_AVAILABLE = False
-    STOP_WORDS = set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should'])
-    print("⚠ NLTK not available, using basic preprocessing")
+# Minimal stop words for basic filtering (optional)
+BASIC_STOP_WORDS = set([
+    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 
+    'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were'
+])
 
-except Exception as e:
-    print(f"⚠ NLTK setup failed: {e}, using basic preprocessing")
-    NLTK_AVAILABLE = False
-    STOP_WORDS = set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should'])
 
 def preprocess_text(text: str) -> str:
-    """Enhanced text preprocessing with improved handling."""
+    """
+    Minimal preprocessing optimized for TF-IDF similarity matching.
+    
+    NO stemming - preserves exact terms like "chemistry", "education"
+    NO aggressive stop word removal - TF-IDF handles term importance
+    
+    Args:
+        text: Input text to preprocess
+        
+    Returns:
+        Preprocessed text with normalized whitespace and punctuation removed
+    """
+    if not text:
+        return ""
+    
+    # Basic normalization
+    text = text.lower().strip()
+    
+    # Remove punctuation but keep spaces
+    text = re.sub(r'[^\w\s]', ' ', text)
+    
+    # Normalize whitespace
+    text = re.sub(r'\s+', ' ', text)
+    
+    # Only remove very short words (1-2 chars) that add no semantic value
+    # Keep all meaningful words - let TF-IDF handle importance weighting
+    words = text.split()
+    words = [word for word in words if len(word) > 2]
+    
+    return ' '.join(words)
+
+
+def preprocess_text_aggressive(text: str) -> str:
+    """
+    More aggressive preprocessing with stop word removal.
+    Use this if you want cleaner text, but it may reduce match accuracy.
+    
+    Args:
+        text: Input text to preprocess
+        
+    Returns:
+        Preprocessed text with stop words removed
+    """
     if not text:
         return ""
     
@@ -44,17 +62,10 @@ def preprocess_text(text: str) -> str:
     text = re.sub(r'[^\w\s]', ' ', text)
     text = re.sub(r'\s+', ' ', text)
     
-    if NLTK_AVAILABLE:
-        try:
-            tokens = word_tokenize(text)
-            tokens = [STEMMER.stem(token) for token in tokens if token not in STOP_WORDS and len(token) > 2]
-            return ' '.join(tokens)
-        except Exception as e:
-            logger.warning("NLTK preprocessing failed: %s", e)
-    
-    # Basic fallback preprocessing
+    # Remove stop words but NO stemming
     words = text.split()
-    words = [word for word in words if word not in STOP_WORDS and len(word) > 2]
+    words = [word for word in words if word not in BASIC_STOP_WORDS and len(word) > 2]
+    
     return ' '.join(words)
 
 def process_course_input(course_input: str) -> str:
