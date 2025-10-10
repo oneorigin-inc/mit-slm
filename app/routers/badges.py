@@ -46,14 +46,11 @@ def handle_error(error: Exception, operation: str, request_id: Optional[str] = N
 
 
 async def generate_badge_image(image_config: Dict[str, Any]) -> str:
-    """Call the image generation API and return base64 image
-
-    TODO: Replace hardcoded localhost:3001 with Docker Compose service URL in production
-    """
+    """Call the image generation API and return base64 image"""
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "http://localhost:3001/api/v1/badge/generate",
+                "http://localhost:3001/api/v1/badge/generate", #Replace localhost:3001/api/v1 with Docker Compose service URL (http://host.docker.internal:3001/api/v1) in production
                 json=image_config,
                 timeout=10.0
             )
