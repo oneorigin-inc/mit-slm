@@ -6,7 +6,7 @@ services:
     image: docker-ollama
     container_name: ollama-service
     ports:
-      - "11435:11434"
+      - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
       # - ../models:/models
@@ -30,7 +30,7 @@ services:
     volumes:
       - ../assets:/app/assets
     environment:
-      - OLLAMA_API_URL=http://ollama:11434/api/generate
+      - OLLAMA_API_URL=http://host.docker.internal:11434/api/generate
     depends_on:
       - ollama
     extra_hosts:              
