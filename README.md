@@ -229,10 +229,10 @@ cd "./mit-slm-dev_v2"
 
 # Configure GPU UUID in docker-compose.yml first
 # Then start services manually
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker-compose.yml up -d
 
 # Check status
-docker compose -f docker/docker-compose.yml ps
+docker compose -f docker-compose.yml ps
 
 # Verify GPU access in containers
 docker exec ollama-service nvidia-smi
