@@ -5,7 +5,7 @@ def _rand_hex():
     return "#" + "".join(random.choice("0123456789ABCDEF") for _ in range(6))
 
 def _pick_palette_color(palette):
-    if random.random() < 0.7 and palette:
+    if palette:
         return random.choice(palette)
     return _rand_hex()
 
@@ -26,14 +26,36 @@ def generate_badge_config(
     meta: dict,
     seed: int | None = None,
     logo_path: str = "assets/logos/wgu_logo.png",
+    institution_colors: dict | None = None,
 ):
-    """Generate text-based badge configuration following spec"""
+    """Generate text-based badge configuration following spec
+
+    Args:
+        meta: Badge metadata
+        seed: Random seed for reproducibility
+        logo_path: Path to logo image
+        institution_colors: Dict with primary, secondary, tertiary colors from institution
+    """
     if seed is not None:
         random.seed(seed)
 
-    warm = ["#FF6F61", "#FF8C42", "#FFB703", "#FB8500", "#E76F51", "#D9544D"]
-    cool = ["#118AB2", "#06D6A0", "#26547C", "#2A9D8F", "#457B9D", "#00B4D8"]
-    neutrals = ["#000000", "#222222", "#333333", "#555555", "#777777", "#999999"]
+    # Use institution colors if available, otherwise use default palettes
+    if institution_colors:
+        warm = []
+        cool = []
+        if institution_colors.get("primary"):
+            warm.append(institution_colors["primary"])
+        if institution_colors.get("secondary"):
+            cool.append(institution_colors["secondary"])
+        if institution_colors.get("tertiary"):
+            warm.append(institution_colors["tertiary"])
+        # For neutrals, use black/dark gray for text
+        neutrals = ["#000000", "#222222", "#333333"]
+    else:
+        # Default color palettes when no institution colors
+        warm = ["#FF6F61", "#FF8C42", "#FFB703", "#FB8500", "#E76F51", "#D9544D"]
+        cool = ["#118AB2", "#06D6A0", "#26547C", "#2A9D8F", "#457B9D", "#00B4D8"]
+        neutrals = ["#000000", "#222222", "#333333", "#555555", "#777777", "#999999"]
 
     # Fixed canvas per spec
     canvas = {"width": 600, "height": 600}
@@ -56,10 +78,18 @@ def generate_badge_config(
             "color": _pick_palette_color(warm + cool),
         }
     else:
-        start = _pick_palette_color(warm)
-        end = _pick_palette_color(cool if random.random() < 0.6 else warm)
-        if end == start:
-            end = _rand_hex()
+        # For gradient, try to pick different colors
+        all_colors = warm + cool
+        if len(all_colors) >= 2:
+            # Pick two different colors
+            start = random.choice(all_colors)
+            available = [c for c in all_colors if c != start]
+            end = random.choice(available)
+        else:
+            # Fallback if only one color available
+            start = _pick_palette_color(warm)
+            end = _pick_palette_color(cool if cool else warm)
+
         fill = {
             "mode": "gradient",
             "start_color": start,
@@ -190,14 +220,37 @@ def generate_badge_image_config(
     seed: int | None = None,
     icon_dir: str = "assets/icons/",
     suggested_icon: str | None = None,
+    institution_colors: dict | None = None,
 ):
-    """Generate icon-based badge configuration"""
+    """Generate icon-based badge configuration
+
+    Args:
+        meta: Badge metadata
+        seed: Random seed for reproducibility
+        icon_dir: Directory containing icon files
+        suggested_icon: Suggested icon filename
+        institution_colors: Dict with primary, secondary, tertiary colors from institution
+    """
     if seed is not None:
         random.seed(seed)
 
-    warm = ["#FF6F61", "#FF8C42", "#FFB703", "#FB8500", "#E76F51", "#D9544D"]
-    cool = ["#118AB2", "#06D6A0", "#26547C", "#2A9D8F", "#457B9D", "#00B4D8"]
-    neutrals = ["#000000", "#222222", "#333333", "#555555", "#777777", "#999999"]
+    # Use institution colors if available, otherwise use default palettes
+    if institution_colors:
+        warm = []
+        cool = []
+        if institution_colors.get("primary"):
+            warm.append(institution_colors["primary"])
+        if institution_colors.get("secondary"):
+            cool.append(institution_colors["secondary"])
+        if institution_colors.get("tertiary"):
+            warm.append(institution_colors["tertiary"])
+        # For neutrals, use black/dark gray for text
+        neutrals = ["#000000", "#222222", "#333333"]
+    else:
+        # Default color palettes when no institution colors
+        warm = ["#FF6F61", "#FF8C42", "#FFB703", "#FB8500", "#E76F51", "#D9544D"]
+        cool = ["#118AB2", "#06D6A0", "#26547C", "#2A9D8F", "#457B9D", "#00B4D8"]
+        neutrals = ["#000000", "#222222", "#333333", "#555555", "#777777", "#999999"]
 
     if suggested_icon:
         icon_file = suggested_icon
@@ -225,10 +278,18 @@ def generate_badge_image_config(
             "color": _pick_palette_color(warm + cool)
         }
     else:
-        start = _pick_palette_color(warm)
-        end = _pick_palette_color(cool if random.random() < 0.6 else warm)
-        if end == start:
-            end = _rand_hex()
+        # For gradient, try to pick different colors
+        all_colors = warm + cool
+        if len(all_colors) >= 2:
+            # Pick two different colors
+            start = random.choice(all_colors)
+            available = [c for c in all_colors if c != start]
+            end = random.choice(available)
+        else:
+            # Fallback if only one color available
+            start = _pick_palette_color(warm)
+            end = _pick_palette_color(cool if cool else warm)
+
         fill = {
             "mode": "gradient",
             "start_color": start,
@@ -277,21 +338,23 @@ def generate_badge_image_config(
 
     return config
 
-async def generate_text_image_config(badge_name: str, badge_description: str, 
-                                   image_text: dict, institution: str) -> dict:
+async def generate_text_image_config(badge_name: str, badge_description: str,
+                                   image_text: dict, institution: str,
+                                   institution_colors: dict | None = None) -> dict:
     """Generate image configuration with optimized text overlay"""
     seed = random.randint(1, 10000)
-    
+
     meta = {
         "badge_title": image_text.get("short_title", badge_name),
         "subtitle": image_text.get("institution_display", institution),
         "extra_text": image_text.get("achievement_phrase", "Achievement Unlocked")
     }
-    
+
     config = generate_badge_config(
         meta=meta,
         seed=seed,
-        logo_path="assets/logos/wgu_logo.png"
+        logo_path="assets/logos/wgu_logo.png",
+        institution_colors=institution_colors
     )
     
     return {
@@ -305,26 +368,28 @@ async def generate_text_image_config(badge_name: str, badge_description: str,
         "seed_used": seed
     }
 
-async def generate_icon_image_config(badge_name: str, badge_description: str, 
-                                   icon_suggestions: dict, institution: str) -> dict:
+async def generate_icon_image_config(badge_name: str, badge_description: str,
+                                   icon_suggestions: dict, institution: str,
+                                   institution_colors: dict | None = None) -> dict:
     """Generate image configuration with suggested icon"""
-    
+
     suggested_icon = None
     if icon_suggestions and icon_suggestions.get('suggested_icon', {}).get('name'):
         suggested_icon = icon_suggestions['suggested_icon']['name']
-    
+
     seed = random.randint(1, 10000)
-    
+
     meta = {
         "badge_title": badge_name,
         "subtitle": institution,
         "extra_text": badge_description
     }
-    
+
     config = generate_badge_image_config(
         meta=meta,
         seed=seed,
-        suggested_icon=suggested_icon
+        suggested_icon=suggested_icon,
+        institution_colors=institution_colors
     )
     
     return {

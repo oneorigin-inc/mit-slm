@@ -521,6 +521,16 @@ Parameters:
                                 yield format_streaming_response(error_chunk)
                                 return
 
+                            # Scrape institution colors if URL provided
+                            institution_colors = None
+                            if request.institute_url:
+                                try:
+                                    from app.services.web_color_scraper import scrape_institution_colors_async
+                                    institution_colors = await scrape_institution_colors_async(request.institute_url)
+                                    logger.info(f"Scraped colors from {request.institute_url}: {institution_colors}")
+                                except Exception as color_error:
+                                    logger.warning(f"Failed to scrape colors from {request.institute_url}: {color_error}")
+
                             # Generate image configuration with random selection
                             image_type = random.choice(["text_overlay", "icon_based"])
                             logger.info(f"Selected image type: {image_type}")
@@ -542,7 +552,8 @@ Parameters:
                                     validated.badge_name,
                                     validated.badge_description,
                                     icon_suggestions_result,
-                                    request.institution or ""
+                                    request.institution or "",
+                                    institution_colors
                                 )
                                 
                                 image_config = image_config_wrapper.get("config", {})
@@ -558,7 +569,8 @@ Parameters:
                                     validated.badge_name,
                                     validated.badge_description,
                                     optimized_text,
-                                    request.institution or ""
+                                    request.institution or "",
+                                    institution_colors
                                 )
                                 
                                 image_config = image_config_wrapper.get("config", {})
