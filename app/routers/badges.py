@@ -75,11 +75,11 @@ async def generate_badge(request: BadgeRequest):
                 top_k=3
             )
 
+            # Extract icon name from suggestions
+            icon_name = icon_suggestions.get('suggested_icon', {}).get('name', 'trophy.png')
+
             image_base64 = await generate_badge_with_icon(
-                validated.badge_name,
-                validated.badge_description,
-                icon_suggestions,
-                request.institution or ""
+                icon_name=icon_name
             )
 
         else:  # text_overlay
@@ -201,11 +201,11 @@ async def regenerate_badge(request: RegenerationRequest):
                 top_k=3
             )
 
+            # Extract icon name from suggestions
+            icon_name = icon_suggestions.get('suggested_icon', {}).get('name', 'trophy.png')
+
             image_base64 = await generate_badge_with_icon(
-                validated.badge_name,
-                validated.badge_description,
-                icon_suggestions,
-                request.institution or ""
+                icon_name=icon_name
             )
 
         else:  # text_overlay
@@ -512,12 +512,12 @@ Parameters:
                                     top_k=3
                                 )
 
+                                # Extract icon name from suggestions
+                                icon_name = icon_suggestions_result.get('suggested_icon', {}).get('name', 'trophy.png')
+
                                 image_base64 = await generate_badge_with_icon(
-                                    validated.badge_name,
-                                    validated.badge_description,
-                                    icon_suggestions_result,
-                                    request.institution or "",
-                                    institution_colors
+                                    icon_name=icon_name,
+                                    institution_colors=institution_colors
                                 )
 
                             else:  # text_overlay
@@ -838,11 +838,11 @@ Parameters:
                                     top_k=3
                                 )
 
+                                # Extract icon name from suggestions
+                                icon_name = icon_suggestions_result.get('suggested_icon', {}).get('name', 'trophy.png')
+
                                 image_base64 = await generate_badge_with_icon(
-                                    validated.badge_name,
-                                    validated.badge_description,
-                                    icon_suggestions_result,
-                                    institution or ""
+                                    icon_name=icon_name
                                 )
 
                             else:  # text_overlay

@@ -54,43 +54,29 @@ async def generate_badge_with_text(
 
 
 async def generate_badge_with_icon(
-    badge_name: str,
-    badge_description: str,
-    icon_suggestions: dict,
-    institution: str = "",
-    institution_colors: Optional[dict] = None
+    icon_name: str,
+    institution_colors: Optional[dict] = None,
+    seed: Optional[int] = None
 ) -> str:
     """
     Generate badge image with icon - returns base64 image
 
     Args:
-        badge_name: Name of the badge
-        badge_description: Description of the badge
-        icon_suggestions: Icon suggestions from get_icon_suggestions_for_badge
-        institution: Institution name
+        icon_name: Icon filename (e.g., 'atom.png', 'trophy.png')
         institution_colors: Optional institution brand colors
+        seed: Optional random seed for reproducibility
 
     Returns:
         Base64 encoded image string
     """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            json={
-                    "badge_name": badge_name,
-                    "badge_description": badge_description,
-                    "icon_suggestions": icon_suggestions,
-                    "institution": institution,
-                    "institution_colors": institution_colors
-                }
-            print("Request JSON:", json)
             response = await client.post(
                 f"{settings.BADGE_IMAGE_SERVICE_URL}/api/v1/badge/generate-with-icon",
                 json={
-                    "badge_name": badge_name,
-                    "badge_description": badge_description,
-                    "icon_suggestions": icon_suggestions,
-                    "institution": institution,
-                    "institution_colors": institution_colors
+                    "icon_name": icon_name,
+                    "institution_colors": institution_colors,
+                    "seed": seed
                 }
             )
             response.raise_for_status()
