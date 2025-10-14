@@ -4,7 +4,7 @@ Replaces the old local image_generator module
 """
 import httpx
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -15,9 +15,9 @@ async def generate_badge_with_text(
     institute: str = "",
     achievement_phrase: str = "",
     colors: Optional[dict] = None
-) -> str:
+) -> Tuple[str, Dict[str, Any]]:
     """
-    Generate badge image with text overlay - returns base64 image
+    Generate badge image with text overlay - returns base64 image and config
 
     Args:
         short_title: Short badge title text
@@ -26,7 +26,7 @@ async def generate_badge_with_text(
         colors: Optional brand colors (primary, secondary, tertiary)
 
     Returns:
-        Base64 encoded image string
+        Tuple of (base64 encoded image string, configuration dict)
     """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -41,7 +41,9 @@ async def generate_badge_with_text(
             )
             response.raise_for_status()
             result = response.json()
-            return result.get("data", {}).get("base64", "")
+            image_base64 = result.get("data", {}).get("base64", "")
+            config = result.get("config", {})
+            return image_base64, config
     except httpx.HTTPStatusError as e:
         logger.error(f"HTTP error calling image service: {e}")
         raise Exception(f"Image service returned error: {e.response.status_code}")
@@ -57,9 +59,9 @@ async def generate_badge_with_icon(
     icon_name: str,
     colors: Optional[dict] = None,
     seed: Optional[int] = None
-) -> str:
+) -> Tuple[str, Dict[str, Any]]:
     """
-    Generate badge image with icon - returns base64 image
+    Generate badge image with icon - returns base64 image and config
 
     Args:
         icon_name: Icon filename (e.g., 'atom.png', 'trophy.png')
@@ -67,7 +69,7 @@ async def generate_badge_with_icon(
         seed: Optional random seed for reproducibility
 
     Returns:
-        Base64 encoded image string
+        Tuple of (base64 encoded image string, configuration dict)
     """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -81,7 +83,9 @@ async def generate_badge_with_icon(
             )
             response.raise_for_status()
             result = response.json()
-            return result.get("data", {}).get("base64", "")
+            image_base64 = result.get("data", {}).get("base64", "")
+            config = result.get("config", {})
+            return image_base64, config
     except httpx.HTTPStatusError as e:
         logger.error(f"HTTP error calling image service: {e}")
         raise Exception(f"Image service returned error: {e.response.status_code}")

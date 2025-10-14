@@ -78,7 +78,7 @@ async def generate_badge(request: BadgeRequest):
             # Extract icon name from suggestions
             icon_name = icon_suggestions.get('suggested_icon', {}).get('name', 'trophy.png')
 
-            image_base64 = await generate_badge_with_icon(
+            image_base64, image_config = await generate_badge_with_icon(
                 icon_name=icon_name
             )
 
@@ -89,7 +89,7 @@ async def generate_badge(request: BadgeRequest):
                 "institution": request.institution or ""
             })
 
-            image_base64 = await generate_badge_with_text(
+            image_base64, image_config = await generate_badge_with_text(
                 short_title=optimized_text.get("short_title", validated.badge_name),
                 institute=optimized_text.get("institution_display", request.institution or ""),
                 achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
@@ -111,6 +111,7 @@ async def generate_badge(request: BadgeRequest):
                     "name": validated.badge_name
                 }
             },
+            imageConfig=image_config,
             badge_id=badge_id
         )
 
@@ -204,7 +205,7 @@ async def regenerate_badge(request: RegenerationRequest):
             # Extract icon name from suggestions
             icon_name = icon_suggestions.get('suggested_icon', {}).get('name', 'trophy.png')
 
-            image_base64 = await generate_badge_with_icon(
+            image_base64, image_config = await generate_badge_with_icon(
                 icon_name=icon_name
             )
 
@@ -215,7 +216,7 @@ async def regenerate_badge(request: RegenerationRequest):
                 "institution": request.institution or ""
             })
 
-            image_base64 = await generate_badge_with_text(
+            image_base64, image_config = await generate_badge_with_text(
                 short_title=optimized_text.get("short_title", validated.badge_name),
                 institute=optimized_text.get("institution_display", request.institution or ""),
                 achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
@@ -237,6 +238,7 @@ async def regenerate_badge(request: RegenerationRequest):
                     "name": validated.badge_name
                 }
             },
+            imageConfig=image_config,
             badge_id=badge_id
         )
 
@@ -515,7 +517,7 @@ Parameters:
                                 # Extract icon name from suggestions
                                 icon_name = icon_suggestions_result.get('suggested_icon', {}).get('name', 'trophy.png')
 
-                                image_base64 = await generate_badge_with_icon(
+                                image_base64, image_config = await generate_badge_with_icon(
                                     icon_name=icon_name,
                                     colors=institution_colors
                                 )
@@ -527,7 +529,7 @@ Parameters:
                                     "institution": request.institution or ""
                                 })
 
-                                image_base64 = await generate_badge_with_text(
+                                image_base64, image_config = await generate_badge_with_text(
                                     short_title=optimized_text.get("short_title", validated.badge_name),
                                     institute=optimized_text.get("institution_display", request.institution or ""),
                                     achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
@@ -557,6 +559,7 @@ Parameters:
                                         "name": validated.badge_name
                                     }
                                 },
+                                imageConfig=image_config,
                                 badge_id=badge_id
                             )
 
@@ -841,7 +844,7 @@ Parameters:
                                 # Extract icon name from suggestions
                                 icon_name = icon_suggestions_result.get('suggested_icon', {}).get('name', 'trophy.png')
 
-                                image_base64 = await generate_badge_with_icon(
+                                image_base64, image_config = await generate_badge_with_icon(
                                     icon_name=icon_name
                                 )
 
@@ -852,7 +855,7 @@ Parameters:
                                     "institution": institution or ""
                                 })
 
-                                image_base64 = await generate_badge_with_text(
+                                image_base64, image_config = await generate_badge_with_text(
                                     short_title=optimized_text.get("short_title", validated.badge_name),
                                     institute=optimized_text.get("institution_display", institution or ""),
                                     achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
@@ -872,6 +875,7 @@ Parameters:
                                         "name": validated.badge_name
                                     }
                                 },
+                                imageConfig=image_config,
                                 badge_id=badge_id
                             )
 
