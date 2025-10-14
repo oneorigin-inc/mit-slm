@@ -11,20 +11,18 @@ logger = logging.getLogger(__name__)
 
 
 async def generate_badge_with_text(
-    badge_name: str,
-    badge_description: str,
-    optimized_text: dict,
-    institution: str = "",
+    short_title: str,
+    institute: str = "",
+    achievement_phrase: str = "",
     institution_colors: Optional[dict] = None
 ) -> str:
     """
     Generate badge image with text overlay - returns base64 image
 
     Args:
-        badge_name: Name of the badge
-        badge_description: Description of the badge
-        optimized_text: Optimized text from optimize_badge_text function
-        institution: Institution name
+        short_title: Short badge title text
+        institute: Institution/organization name
+        achievement_phrase: Achievement phrase or motto
         institution_colors: Optional institution brand colors
 
     Returns:
@@ -35,10 +33,9 @@ async def generate_badge_with_text(
             response = await client.post(
                 f"{settings.BADGE_IMAGE_SERVICE_URL}/api/v1/badge/generate-with-text",
                 json={
-                    "badge_name": badge_name,
-                    "badge_description": badge_description,
-                    "optimized_text": optimized_text,
-                    "institution": institution,
+                    "short_title": short_title,
+                    "institute": institute,
+                    "achievement_phrase": achievement_phrase,
                     "institution_colors": institution_colors
                 }
             )

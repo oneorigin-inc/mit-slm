@@ -90,10 +90,9 @@ async def generate_badge(request: BadgeRequest):
             })
 
             image_base64 = await generate_badge_with_text(
-                validated.badge_name,
-                validated.badge_description,
-                optimized_text,
-                request.institution or ""
+                short_title=optimized_text.get("short_title", validated.badge_name),
+                institute=optimized_text.get("institution_display", request.institution or ""),
+                achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
             )
 
         # Generate badge ID
@@ -217,10 +216,9 @@ async def regenerate_badge(request: RegenerationRequest):
             })
 
             image_base64 = await generate_badge_with_text(
-                validated.badge_name,
-                validated.badge_description,
-                optimized_text,
-                request.institution or ""
+                short_title=optimized_text.get("short_title", validated.badge_name),
+                institute=optimized_text.get("institution_display", request.institution or ""),
+                achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
             )
 
         # Generate badge ID
@@ -530,11 +528,10 @@ Parameters:
                                 })
 
                                 image_base64 = await generate_badge_with_text(
-                                    validated.badge_name,
-                                    validated.badge_description,
-                                    optimized_text,
-                                    request.institution or "",
-                                    institution_colors
+                                    short_title=optimized_text.get("short_title", validated.badge_name),
+                                    institute=optimized_text.get("institution_display", request.institution or ""),
+                                    achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
+                                    institution_colors=institution_colors
                                 )
                             # Log image generation summary (do not log full base64)
                             try:
@@ -856,10 +853,9 @@ Parameters:
                                 })
 
                                 image_base64 = await generate_badge_with_text(
-                                    validated.badge_name,
-                                    validated.badge_description,
-                                    optimized_text,
-                                    institution or ""
+                                    short_title=optimized_text.get("short_title", validated.badge_name),
+                                    institute=optimized_text.get("institution_display", institution or ""),
+                                    achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
                                 )
                             logger.info(f"Image regenerated | base64_len={len(image_base64) if isinstance(image_base64, str) else 0}")
 
