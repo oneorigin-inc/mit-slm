@@ -162,20 +162,20 @@ async def regenerate_badge(request: RegenerationRequest):
             custom_instructions=request.custom_instructions,
             institution=request.institution
         )
-        
+
         # Get current random parameters
         current_params = get_random_parameters(mock_request)
-        
+
         # Apply regeneration overrides
         regeneration_map = {param: "true" for param in request.regenerate_parameters}
         updated_params = apply_regeneration_overrides(current_params, regeneration_map)
-        
+
         # Update mock request with new parameters
         mock_request.badge_style = updated_params['badge_style']
         mock_request.badge_tone = updated_params['badge_tone']
         mock_request.criterion_style = updated_params['criterion_style']
         mock_request.badge_level = updated_params['badge_level']
-        
+
         # Generate badge with updated parameters
         badge_json = await generate_badge_metadata_async(mock_request)
 
@@ -517,7 +517,7 @@ Parameters:
 
                                 image_base64 = await generate_badge_with_icon(
                                     icon_name=icon_name,
-                                    institution_colors=institution_colors
+                                    colors=institution_colors
                                 )
 
                             else:  # text_overlay
@@ -531,7 +531,7 @@ Parameters:
                                     short_title=optimized_text.get("short_title", validated.badge_name),
                                     institute=optimized_text.get("institution_display", request.institution or ""),
                                     achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
-                                    institution_colors=institution_colors
+                                    colors=institution_colors
                                 )
                             # Log image generation summary (do not log full base64)
                             try:

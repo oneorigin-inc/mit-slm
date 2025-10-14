@@ -14,7 +14,7 @@ async def generate_badge_with_text(
     short_title: str,
     institute: str = "",
     achievement_phrase: str = "",
-    institution_colors: Optional[dict] = None
+    colors: Optional[dict] = None
 ) -> str:
     """
     Generate badge image with text overlay - returns base64 image
@@ -23,7 +23,7 @@ async def generate_badge_with_text(
         short_title: Short badge title text
         institute: Institution/organization name
         achievement_phrase: Achievement phrase or motto
-        institution_colors: Optional institution brand colors
+        colors: Optional brand colors (primary, secondary, tertiary)
 
     Returns:
         Base64 encoded image string
@@ -36,7 +36,7 @@ async def generate_badge_with_text(
                     "short_title": short_title,
                     "institute": institute,
                     "achievement_phrase": achievement_phrase,
-                    "institution_colors": institution_colors
+                    "colors": colors
                 }
             )
             response.raise_for_status()
@@ -55,7 +55,7 @@ async def generate_badge_with_text(
 
 async def generate_badge_with_icon(
     icon_name: str,
-    institution_colors: Optional[dict] = None,
+    colors: Optional[dict] = None,
     seed: Optional[int] = None
 ) -> str:
     """
@@ -63,7 +63,7 @@ async def generate_badge_with_icon(
 
     Args:
         icon_name: Icon filename (e.g., 'atom.png', 'trophy.png')
-        institution_colors: Optional institution brand colors
+        colors: Optional brand colors (primary, secondary, tertiary)
         seed: Optional random seed for reproducibility
 
     Returns:
@@ -75,7 +75,7 @@ async def generate_badge_with_icon(
                 f"{settings.BADGE_IMAGE_SERVICE_URL}/api/v1/badge/generate-with-icon",
                 json={
                     "icon_name": icon_name,
-                    "institution_colors": institution_colors,
+                    "colors": colors,
                     "seed": seed
                 }
             )
