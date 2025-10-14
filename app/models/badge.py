@@ -9,6 +9,6 @@ class BadgeValidated(BaseModel):
 
 class BadgeResponse(BaseModel):
     credentialSubject: Dict[str, Any]
-    imageConfig: Dict[str, Any] 
+    imageConfig: Optional[Dict[str, Any]] = None
     badge_id: str
 
