@@ -14,14 +14,14 @@ import uuid
 from app.models.requests import BadgeRequest, RegenerationRequest, AppendDataRequest, FieldRegenerateRequest
 from app.models.badge import BadgeResponse, BadgeValidated
 from app.services.badge_generator import (
-    generate_badge_metadata_async, 
+    generate_badge_metadata_async,
     generate_badge_metadata_stream_async,
     get_random_parameters,
     apply_regeneration_overrides,
     optimize_badge_text,
     extract_json_from_response
 )
-from app.services.image_generator import generate_text_image_config, generate_icon_image_config
+from app.services.image_client import generate_badge_with_text, generate_badge_with_icon
 from app.services.text_processor import process_course_input
 from app.utils.icon_matcher import get_icon_suggestions_for_badge
 from app.core.config import settings
@@ -43,23 +43,6 @@ def handle_error(error: Exception, operation: str, request_id: Optional[str] = N
     logger.exception(f"{operation} failed: {error}")
     return HTTPException(status_code=500, detail=f"{operation} failed: {str(error)}")
 
-
-
-async def generate_badge_image(image_config: Dict[str, Any]) -> str:
-    """Call the image generation API and return base64 image"""
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "http://localhost:3001/api/v1/badge/generate", #Replace localhost:3001/api/v1 with Docker Compose service URL (http://host.docker.internal:3001/api/v1) in production
-                json=image_config,
-                timeout=10.0
-            )
-            response.raise_for_status()
-            result = response.json()
-            return result.get("data", {}).get("base64", "")
-    except Exception as e:
-        logger.error(f"Failed to generate badge image: {e}")
-        return ""
 
 @router.post("/generate-badge-suggestions", response_model=BadgeResponse)
 async def generate_badge(request: BadgeRequest):
@@ -91,37 +74,29 @@ async def generate_badge(request: BadgeRequest):
                 custom_instructions=request.custom_instructions or "",
                 top_k=3
             )
-            
-            image_config_wrapper = await generate_icon_image_config(
-                validated.badge_name,
-                validated.badge_description,
-                icon_suggestions,
-                request.institution or ""
+
+            # Extract icon name from suggestions
+            icon_name = icon_suggestions.get('suggested_icon', {}).get('name', 'trophy.png')
+
+            image_base64, image_config = await generate_badge_with_icon(
+                icon_name=icon_name
             )
-            
-            image_config = image_config_wrapper.get("config", {})
-            
+
         else:  # text_overlay
             optimized_text = await optimize_badge_text({
                 "badge_name": validated.badge_name,
                 "badge_description": validated.badge_description,
                 "institution": request.institution or ""
             })
-            
-            image_config_wrapper = await generate_text_image_config(
-                validated.badge_name,
-                validated.badge_description,
-                optimized_text,
-                request.institution or ""
+
+            image_base64, image_config = await generate_badge_with_text(
+                short_title=optimized_text.get("short_title", validated.badge_name),
+                institute=optimized_text.get("institution_display", request.institution or ""),
+                achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
             )
-            
-            image_config = image_config_wrapper.get("config", {})
 
         # Generate badge ID
         badge_id = str(uuid.uuid4())
-
-        # Generate badge image
-        image_base64 = await generate_badge_image(image_config)
 
         # Transform to new JSON schema format
         result = BadgeResponse(
@@ -188,20 +163,20 @@ async def regenerate_badge(request: RegenerationRequest):
             custom_instructions=request.custom_instructions,
             institution=request.institution
         )
-        
+
         # Get current random parameters
         current_params = get_random_parameters(mock_request)
-        
+
         # Apply regeneration overrides
         regeneration_map = {param: "true" for param in request.regenerate_parameters}
         updated_params = apply_regeneration_overrides(current_params, regeneration_map)
-        
+
         # Update mock request with new parameters
         mock_request.badge_style = updated_params['badge_style']
         mock_request.badge_tone = updated_params['badge_tone']
         mock_request.criterion_style = updated_params['criterion_style']
         mock_request.badge_level = updated_params['badge_level']
-        
+
         # Generate badge with updated parameters
         badge_json = await generate_badge_metadata_async(mock_request)
 
@@ -218,7 +193,7 @@ async def regenerate_badge(request: RegenerationRequest):
 
         # Generate image configuration
         image_type = random.choice(["text_overlay", "icon_based"])
-        
+
         if image_type == "icon_based":
             icon_suggestions = await get_icon_suggestions_for_badge(
                 badge_name=validated.badge_name,
@@ -226,31 +201,26 @@ async def regenerate_badge(request: RegenerationRequest):
                 custom_instructions=request.custom_instructions or "",
                 top_k=3
             )
-            
-            image_config_wrapper = await generate_icon_image_config(
-                validated.badge_name,
-                validated.badge_description,
-                icon_suggestions,
-                request.institution or ""
+
+            # Extract icon name from suggestions
+            icon_name = icon_suggestions.get('suggested_icon', {}).get('name', 'trophy.png')
+
+            image_base64, image_config = await generate_badge_with_icon(
+                icon_name=icon_name
             )
-            
-            image_config = image_config_wrapper.get("config", {})
-            
+
         else:  # text_overlay
             optimized_text = await optimize_badge_text({
                 "badge_name": validated.badge_name,
                 "badge_description": validated.badge_description,
                 "institution": request.institution or ""
             })
-            
-            image_config_wrapper = await generate_text_image_config(
-                validated.badge_name,
-                validated.badge_description,
-                optimized_text,
-                request.institution or ""
+
+            image_base64, image_config = await generate_badge_with_text(
+                short_title=optimized_text.get("short_title", validated.badge_name),
+                institute=optimized_text.get("institution_display", request.institution or ""),
+                achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
             )
-            
-            image_config = image_config_wrapper.get("config", {})
 
         # Generate badge ID
         badge_id = str(uuid.uuid4())
@@ -262,7 +232,8 @@ async def regenerate_badge(request: RegenerationRequest):
                     "criteria": validated.criteria,  # This is already {"narrative": "string"} format
                     "description": validated.badge_description,
                     "image": {
-                        "id": f"https://example.com/achievements/badge_{badge_id}/image"
+                        "id": f"https://example.com/achievements/badge_{badge_id}/image",
+                        "image_base64": image_base64
                     },
                     "name": validated.badge_name
                 }
@@ -542,43 +513,28 @@ Parameters:
                                     custom_instructions=request.custom_instructions or "",
                                     top_k=3
                                 )
-                                
-                                # Extract the suggested icon and alternatives
-                                suggested_icon = icon_suggestions_result.get("suggested_icon", {})
-                                alternatives = icon_suggestions_result.get("alternatives", [])
-                                
-                                # Pass the result directly to generate_icon_image_config
-                                image_config_wrapper = await generate_icon_image_config(
-                                    validated.badge_name,
-                                    validated.badge_description,
-                                    icon_suggestions_result,
-                                    request.institution or "",
-                                    institution_colors
+
+                                # Extract icon name from suggestions
+                                icon_name = icon_suggestions_result.get('suggested_icon', {}).get('name', 'trophy.png')
+
+                                image_base64, image_config = await generate_badge_with_icon(
+                                    icon_name=icon_name,
+                                    colors=institution_colors
                                 )
-                                
-                                image_config = image_config_wrapper.get("config", {})
-                                
+
                             else:  # text_overlay
                                 optimized_text = await optimize_badge_text({
                                     "badge_name": validated.badge_name,
                                     "badge_description": validated.badge_description,
                                     "institution": request.institution or ""
                                 })
-                                
-                                image_config_wrapper = await generate_text_image_config(
-                                    validated.badge_name,
-                                    validated.badge_description,
-                                    optimized_text,
-                                    request.institution or "",
-                                    institution_colors
+
+                                image_base64, image_config = await generate_badge_with_text(
+                                    short_title=optimized_text.get("short_title", validated.badge_name),
+                                    institute=optimized_text.get("institution_display", request.institution or ""),
+                                    achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
+                                    colors=institution_colors
                                 )
-                                
-                                image_config = image_config_wrapper.get("config", {})
-
-                            logger.info(f"Image config wrapper: {image_config_wrapper}")
-                            logger.info(f"Image config: {image_config}")
-
-                            image_base64 = await generate_badge_image(image_config)
                             # Log image generation summary (do not log full base64)
                             try:
                                 preview = (image_base64 or "")[:48]
@@ -663,7 +619,6 @@ Parameters:
                                             "name": validated.badge_name
                                         }
                                     },
-                                    "imageConfig": image_config,
                                     "badge_id": badge_id
                                 }
                                 
@@ -885,33 +840,26 @@ Parameters:
                                     custom_instructions=request.custom_instructions or "",
                                     top_k=3
                                 )
-                                
-                                image_config_wrapper = await generate_icon_image_config(
-                                    validated.badge_name,
-                                    validated.badge_description,
-                                    icon_suggestions_result,
-                                    institution or ""
+
+                                # Extract icon name from suggestions
+                                icon_name = icon_suggestions_result.get('suggested_icon', {}).get('name', 'trophy.png')
+
+                                image_base64, image_config = await generate_badge_with_icon(
+                                    icon_name=icon_name
                                 )
-                                
-                                image_config = image_config_wrapper.get("config", {})
-                                
+
                             else:  # text_overlay
                                 optimized_text = await optimize_badge_text({
                                     "badge_name": validated.badge_name,
                                     "badge_description": validated.badge_description,
                                     "institution": institution or ""
                                 })
-                                
-                                image_config_wrapper = await generate_text_image_config(
-                                    validated.badge_name,
-                                    validated.badge_description,
-                                    optimized_text,
-                                    institution or ""
-                                )
-                                
-                                image_config = image_config_wrapper.get("config", {})
 
-                            image_base64 = await generate_badge_image(image_config)
+                                image_base64, image_config = await generate_badge_with_text(
+                                    short_title=optimized_text.get("short_title", validated.badge_name),
+                                    institute=optimized_text.get("institution_display", institution or ""),
+                                    achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
+                                )
                             logger.info(f"Image regenerated | base64_len={len(image_base64) if isinstance(image_base64, str) else 0}")
 
                             # Transform to new JSON schema format
@@ -984,7 +932,6 @@ Parameters:
                                             "name": validated.badge_name
                                         }
                                     },
-                                    "imageConfig": image_config,
                                     "badge_id": badge_id
                                 }
                                 
@@ -1120,7 +1067,6 @@ def merge_field_update(original_badge: Dict[str, Any], field: str, new_value: st
         credentialSubject={
             "achievement": achievement
         },
-        imageConfig=result_dict.get("imageConfig", {}),
         badge_id=new_badge_id
     )
 

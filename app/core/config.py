@@ -4,10 +4,13 @@ from typing import Dict, List
 import os
 
 class Settings(BaseSettings):
-    # Ollama Configuration  
+    # Ollama Configuration
     OLLAMA_API_URL: str = "http://localhost:11434/api/generate"
     MODEL_NAME: str = "phi4-chat:latest"
-    
+
+    # Badge Image Service Configuration
+    BADGE_IMAGE_SERVICE_URL: str = os.getenv("BADGE_IMAGE_SERVICE_URL", "http://localhost:3001")
+
     # Model Configuration
     MODEL_CONFIG: Dict = {
         "temperature": 0.15,
