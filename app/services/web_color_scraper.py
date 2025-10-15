@@ -553,8 +553,9 @@ async def scrape_institution_colors_async(institution_url: str) -> Dict[str, Opt
         return result
 
     # Run in thread pool to avoid blocking
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _scrape)
+    loop = asyncio.get_running_loop()
+    result: Dict[str, Optional[str]] = await loop.run_in_executor(None, _scrape)  # type: ignore
+    return result
 
 if __name__ == "__main__":
     main()

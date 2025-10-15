@@ -725,13 +725,14 @@ async def get_icon_suggestions_for_badge(
         
         # Use smart fallback if similarity is too low
         if not top_icon or top_icon["similarity_score"] < 0.15:
+            score_msg = f"{top_icon['similarity_score']:.4f}" if top_icon else "N/A"
             logger.warning(
-                f"Low similarity score ({top_icon['similarity_score']:.4f} < 0.15) "
+                f"Low similarity score ({score_msg} < 0.15) "
                 f"for badge: {badge_name}. Using smart fallback."
             )
             return _get_smart_fallback_response(
-                badge_name, 
-                badge_description, 
+                badge_name,
+                badge_description,
                 alternatives[:top_k-1]
             )
         
@@ -806,7 +807,10 @@ def _get_smart_fallback_response(
     Used when similarity scores are too low or no data available.
     """
     combined_text = f"{badge_name} {badge_description}".lower()
-    
+
+    # Initialize icon with default type
+    icon: Dict[str, Any] = {"name": "trophy.png", "display_name": "Trophy", "category": "achievement"}
+
     # Category-based matching
     if any(word in combined_text for word in ['chemistry', 'chemical', 'molecule', 'atom', 'lab']):
         icon = {"name": "atom.png", "display_name": "Atom", "category": "science"}
@@ -819,19 +823,16 @@ def _get_smart_fallback_response(
     elif any(word in combined_text for word in ['math', 'mathematics', 'calculus', 'algebra', 'geometry']):
         icon = {"name": "calculator.png", "display_name": "Mathematics", "category": "math"}
     elif any(word in combined_text for word in ['art', 'design', 'creative', 'drawing', 'painting']):
-        icon = {"name": "palette.png", "display_name": "Art", "category": "creative"}
+        icon = {"name": "color-palette.png", "display_name": "Art", "category": "creative"}
     elif any(word in combined_text for word in ['music', 'musical', 'instrument', 'song', 'melody']):
-        icon = {"name": "music-note.png", "display_name": "Music", "category": "creative"}
+        icon = {"name": "music_note.png", "display_name": "Music", "category": "creative"}
     elif any(word in combined_text for word in ['fitness', 'exercise', 'workout', 'health', 'sport']):
         icon = {"name": "dumbbell.png", "display_name": "Fitness", "category": "health"}
     elif any(word in combined_text for word in ['goal', 'target', 'objective', 'milestone']):
         icon = {"name": "goal.png", "display_name": "Goal", "category": "achievement"}
     elif any(word in combined_text for word in ['star', 'excellence', 'outstanding', 'exceptional']):
         icon = {"name": "star.png", "display_name": "Star", "category": "achievement"}
-    else:
-        # Default fallback
-        icon = {"name": "trophy.png", "display_name": "Trophy", "category": "achievement"}
-    
+
     # Complete the icon data
     icon.update({
         "description": f"Category-matched icon for {badge_name}",

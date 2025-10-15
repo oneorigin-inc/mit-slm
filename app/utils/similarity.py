@@ -36,11 +36,11 @@ def calculate_batch_similarity(query: str, documents: List[str]) -> List[float]:
         )
         
         # Fit and transform all texts
-        tfidf_matrix = vectorizer.fit_transform(all_texts)
-        
+        tfidf_matrix = vectorizer.fit_transform(all_texts)  # type: ignore
+
         # Query is first row, documents are remaining rows
-        query_vector = tfidf_matrix[0:1]
-        doc_vectors = tfidf_matrix[1:]
+        query_vector = tfidf_matrix[0:1]  # type: ignore
+        doc_vectors = tfidf_matrix[1:]  # type: ignore
         
         # Calculate cosine similarities
         similarities = cosine_similarity(query_vector, doc_vectors)[0]

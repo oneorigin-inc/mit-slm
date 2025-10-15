@@ -704,13 +704,20 @@ async def regenerate_badge_stream(request: BadgeRegenerateRequest):
         current_params = last_badge_entry.get("selected_parameters", {})
         
         # Extract previous badge achievement data
-        if hasattr(previous_badge, 'dict'):
-            previous_badge_dict = previous_badge.dict()
-        elif hasattr(previous_badge, '__dict__'):
-            previous_badge_dict = previous_badge.__dict__
-        else:
+        previous_badge_dict: Dict[str, Any] = {}
+        if isinstance(previous_badge, dict):
             previous_badge_dict = previous_badge
-            
+        elif previous_badge is not None:
+            # Try Pydantic v2 model_dump first, then v1 dict, then __dict__
+            try:
+                previous_badge_dict = previous_badge.model_dump()  # type: ignore
+            except AttributeError:
+                try:
+                    previous_badge_dict = previous_badge.dict()  # type: ignore
+                except AttributeError:
+                    if hasattr(previous_badge, '__dict__'):
+                        previous_badge_dict = previous_badge.__dict__
+
         previous_achievement = previous_badge_dict.get('credentialSubject', {}).get('achievement', {})
         
         # Build context with previous badge data
