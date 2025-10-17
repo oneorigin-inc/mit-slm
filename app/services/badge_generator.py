@@ -130,17 +130,15 @@ Parameters:
 
 
 async def optimize_badge_text(badge_data: dict, max_title_chars: int = 30):
-    """Optimize badge text for image overlay"""
+    """Optimize badge text for image overlay, without institute name"""
     prompt = f"""Badge: "{badge_data['badge_name']}"
 Description: "{badge_data['badge_description']}"
-Institution: "{badge_data.get('institution', '')}"
 
 Generate optimized overlay text. CRITICAL: All text must be complete phrases without ellipsis (...) or truncation.
 
 Character Limits:
 - short_title: max {max_title_chars} chars (rephrase if needed, never truncate)
 - brief_description: 25-30 chars
-- institution_display: abbreviated if long
 - achievement_phrase: 20-25 chars (creative slogan or descriptive sentence!)
 
 Achievement Phrase Guidelines:
@@ -154,10 +152,8 @@ Return JSON:
 {{
     "short_title": "",
     "brief_description": "",
-    "institution_display": "",
     "achievement_phrase": ""
 }}"""
-
 
     response = await call_model_async(prompt)
     return extract_json_from_response(response)

@@ -91,7 +91,6 @@ async def generate_badge(request: BadgeRequest):
 
             image_base64, image_config = await generate_badge_with_text(
                 short_title=optimized_text.get("short_title", validated.badge_name),
-                institute=optimized_text.get("institution_display", request.institution or ""),
                 achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
             )
 
@@ -218,7 +217,6 @@ async def regenerate_badge(request: RegenerationRequest):
 
             image_base64, image_config = await generate_badge_with_text(
                 short_title=optimized_text.get("short_title", validated.badge_name),
-                institute=optimized_text.get("institution_display", request.institution or ""),
                 achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
             )
 
@@ -395,10 +393,10 @@ Parameters:
 - Criterion Style: {settings.CRITERION_TEMPLATES.get(current_params['criterion_style'])}"""
 
         if request.institution:
-            user_content += f"\n- Institution: {request.institution}"
-        
+            user_content += f"\n- Institution: {request.institution}, Highlight institutional credibility and authority in badge name and badge description briefly."
+
         if request.custom_instructions:
-            user_content += f"\n- Special Instructions: {request.custom_instructions}"
+            user_content += f"\n- Special Instructions: {request.custom_instructions}, "
 
         user_content += '\n\nGenerate badge JSON with exact schema {"badge_name": "string", "badge_description": "string", "criteria": {"narrative": "string"}}:'
 
@@ -531,7 +529,7 @@ Parameters:
 
                                 image_base64, image_config = await generate_badge_with_text(
                                     short_title=optimized_text.get("short_title", validated.badge_name),
-                                    institute=optimized_text.get("institution_display", request.institution or ""),
+                    
                                     achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
                                     colors=institution_colors
                                 )
@@ -864,7 +862,7 @@ Parameters:
 
                                 image_base64, image_config = await generate_badge_with_text(
                                     short_title=optimized_text.get("short_title", validated.badge_name),
-                                    institute=optimized_text.get("institution_display", institution or ""),
+                                   
                                     achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
                                 )
                             logger.info(f"Image regenerated | base64_len={len(image_base64) if isinstance(image_base64, str) else 0}")

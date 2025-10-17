@@ -10,9 +10,14 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
+from typing import Optional, Tuple, Dict, Any
+import httpx
+import logging
+
+logger = logging.getLogger(__name__)
+
 async def generate_badge_with_text(
     short_title: str,
-    institute: str = "",
     achievement_phrase: str = "",
     colors: Optional[dict] = None
 ) -> Tuple[str, Dict[str, Any]]:
@@ -21,7 +26,6 @@ async def generate_badge_with_text(
 
     Args:
         short_title: Short badge title text
-        institute: Institution/organization name
         achievement_phrase: Achievement phrase or motto
         colors: Optional brand colors (primary, secondary, tertiary)
 
@@ -34,7 +38,6 @@ async def generate_badge_with_text(
                 f"{settings.BADGE_IMAGE_SERVICE_URL}/api/v1/badge/generate-with-text",
                 json={
                     "short_title": short_title,
-                    "institute": institute,
                     "achievement_phrase": achievement_phrase,
                     "colors": colors
                 }
@@ -53,6 +56,7 @@ async def generate_badge_with_text(
     except Exception as e:
         logger.error(f"Unexpected error calling image service: {e}")
         raise
+
 
 
 async def generate_badge_with_icon(
