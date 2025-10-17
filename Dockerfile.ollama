@@ -6,6 +6,17 @@ COPY models/ /models/
 # Set working directory
 WORKDIR /models
 
+# Start Ollama in background, create model, then stop
+RUN ollama serve & \
+    OLLAMA_PID=$! && \
+    sleep 5 && \
+    ollama create phi4-chat -f Modelfile && \
+    kill $OLLAMA_PID && \
+    wait $OLLAMA_PID || true
+
 # Expose Ollama port
 EXPOSE 11434
+
+# Start Ollama server
+CMD ["serve"]
 

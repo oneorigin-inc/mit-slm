@@ -13,23 +13,25 @@ class OllamaClient:
         self.api_url = settings.OLLAMA_API_URL
         self.model_config = settings.MODEL_CONFIG
         
-    async def generate_stream(self, content: str, temperature: float = 0.15, max_tokens: int = 400, 
+    async def generate_stream(self, content: str, temperature: float = 0.15, max_tokens: int = 400,
                             top_p: float = 0.8, top_k: int = 30, repeat_penalty: float = 1.05) -> AsyncGenerator[Dict[str, Any], None]:
         """Make streaming API call to Ollama with structured response format."""
         payload = {
             "model": settings.MODEL_NAME,
             "prompt": content,
             "stream": True,
+            "keep_alive": "6h",  # Keep model loaded for 6 hours
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
                 "top_p": top_p,
                 "top_k": top_k,
-                "repeat_penalty": repeat_penalty
+                "repeat_penalty": repeat_penalty,
+                "num_ctx": settings.MODEL_CONFIG.get("num_ctx", 4096) 
             }
         }
         
-        timeout = httpx.Timeout(120.0)
+        timeout = httpx.Timeout(300.0)  # 5 minutes for cold starts
         request_id = f"req_{hash(content)}_{int(time.time())}"
         accumulated_response = ""
         
@@ -101,21 +103,26 @@ class OllamaClient:
     async def generate(self, prompt: str, config: Optional[Dict] = None) -> str:
         """Make async API call to Ollama."""
         if config is None:
-            config = self.model_config
-            
+            config = self.model_config.copy()
+        else:
+            config = config.copy()
+
+        keep_alive = config.pop("keep_alive", "6h")
+
         payload = {
             "model": settings.MODEL_NAME,
             "prompt": prompt,
             "stream": False,
+            "keep_alive": keep_alive,
             "options": config
         }
-        
-        timeout = httpx.Timeout(120.0)
+
+        timeout = httpx.Timeout(300.0)  # 5 minutes for cold starts
         request_id = f"req_{hash(prompt)}_{int(time.time())}"
-        
+
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
-                logger.info(f"Making non-streaming request {request_id} to model {settings.MODEL_NAME}")
+                logger.info(f"Making non-streaming request {request_id} to model {settings.MODEL_NAME} with keep_alive={keep_alive}")
                 response = await client.post(self.api_url, json=payload)
                 response.raise_for_status()
                 result = response.json()

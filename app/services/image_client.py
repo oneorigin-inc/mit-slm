@@ -48,14 +48,14 @@ async def generate_badge_with_text(
             config = result.get("config", {})
             return image_base64, config
     except httpx.HTTPStatusError as e:
-        logger.error(f"HTTP error calling image service: {e}")
-        raise Exception(f"Image service returned error: {e.response.status_code}")
+        logger.warning(f"HTTP error calling image service: {e}. Returning empty image.")
+        return "", {}
     except httpx.RequestError as e:
-        logger.error(f"Request error calling image service: {e}")
-        raise Exception("Failed to connect to image service")
+        logger.warning(f"Image service not available: {e}. Returning empty image.")
+        return "", {}
     except Exception as e:
-        logger.error(f"Unexpected error calling image service: {e}")
-        raise
+        logger.warning(f"Unexpected error calling image service: {e}. Returning empty image.")
+        return "", {}
 
 
 
@@ -91,11 +91,11 @@ async def generate_badge_with_icon(
             config = result.get("config", {})
             return image_base64, config
     except httpx.HTTPStatusError as e:
-        logger.error(f"HTTP error calling image service: {e}")
-        raise Exception(f"Image service returned error: {e.response.status_code}")
+        logger.warning(f"HTTP error calling image service: {e}. Returning empty image.")
+        return "", {}
     except httpx.RequestError as e:
-        logger.error(f"Request error calling image service: {e}")
-        raise Exception("Failed to connect to image service")
+        logger.warning(f"Image service not available: {e}. Returning empty image.")
+        return "", {}
     except Exception as e:
-        logger.error(f"Unexpected error calling image service: {e}")
-        raise
+        logger.warning(f"Unexpected error calling image service: {e}. Returning empty image.")
+        return "", {}
