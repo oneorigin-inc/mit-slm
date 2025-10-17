@@ -11,12 +11,6 @@ services:
       - ollama-data:/root/.ollama
       # - ../models:/models
     restart: unless-stopped
-    entrypoint: ["/bin/bash", "-c"]
-    command: |
-      "ollama serve &
-       sleep 10 &&
-       ollama create phi4-chat -f Modelfile &&
-       wait"
     
 
   badge-api:
