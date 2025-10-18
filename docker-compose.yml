@@ -15,7 +15,7 @@ services:
     command: |
       "ollama serve &
        sleep 10 &&
-       ollama create phi4-chat -f Modelfile &&
+       ollama create phi4-open-badge-generator:v1 -f Modelfile &&
        wait"
     
 
