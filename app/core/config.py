@@ -7,7 +7,7 @@ import os
 class Settings(BaseSettings):
     # Ollama Configuration
     OLLAMA_API_URL: str = os.getenv("OLLAMA_API_URL", "http://localhost:11434/api/generate")
-    MODEL_NAME: str = "phi4-open-badge-generator:v1"
+    MODEL_NAME: str = "phi4-chat:latest"
 
     # Badge Image Service Configuration
     BADGE_IMAGE_SERVICE_URL: str = os.getenv("BADGE_IMAGE_SERVICE_URL", "http://localhost:3001")
