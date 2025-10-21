@@ -1,3 +1,4 @@
+
 from pydantic_settings import BaseSettings  # Changed from pydantic import BaseSettings
 from pydantic import Field
 from typing import Dict, List
@@ -5,7 +6,7 @@ import os
 
 class Settings(BaseSettings):
     # Ollama Configuration
-    OLLAMA_API_URL: str = "http://localhost:11434/api/generate"
+    OLLAMA_API_URL: str = os.getenv("OLLAMA_API_URL", "http://localhost:11434/api/generate")
     MODEL_NAME: str = "phi4-open-badge-generator:v1"
 
     # Badge Image Service Configuration
@@ -18,8 +19,7 @@ class Settings(BaseSettings):
         "top_k": 30,
         "num_predict": 1024,
         "repeat_penalty": 1.05,
-        "num_ctx": 4096,
-        "keep_alive": "7m",
+        "num_ctx": 6144,
         "stop": ["<|end|>", "}\n\n"]
     }
     

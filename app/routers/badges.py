@@ -1203,3 +1203,37 @@ async def regenerate_field(request: FieldRegenerateRequest):
         logger.exception("Unexpected error in /regenerate-field: %s", e)
         raise HTTPException(status_code=500, detail=f"Field regeneration error: {str(e)}")
 
+
+@router.get("/ollama-status")
+async def check_ollama_status():
+    """Check Ollama model status - shows running models and keep_alive expiration"""
+    try:
+        # Get Ollama base URL from settings
+        ollama_base_url = settings.OLLAMA_API_URL.replace('/api/generate', '')
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Check running models (shows which models are loaded in memory)
+            ps_response = await client.get(f"{ollama_base_url}/api/ps")
+
+            # Check available models
+            tags_response = await client.get(f"{ollama_base_url}/api/tags")
+
+            return {
+                "status": "success",
+                "ollama_url": ollama_base_url,
+                "running_models": ps_response.json(),
+                "available_models": tags_response.json()
+            }
+    except httpx.ConnectError as e:
+        logger.error(f"Cannot connect to Ollama service: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cannot connect to Ollama service at {settings.OLLAMA_API_URL}"
+        )
+    except Exception as e:
+        logger.exception(f"Error checking Ollama status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error checking Ollama status: {str(e)}"
+        )
+
