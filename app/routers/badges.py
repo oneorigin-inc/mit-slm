@@ -6,7 +6,7 @@ import re
 import httpx
 from datetime import datetime
 from typing import AsyncGenerator, List, Dict, Any, Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ValidationError
 import uuid
@@ -85,7 +85,7 @@ async def generate_badge(request: BadgeRequest):
         else:  # text_overlay
             optimized_text = await optimize_badge_text({
                 "badge_name": validated.badge_name,
-                "badge_description": validated.badge_description,
+                #"badge_description": validated.badge_description,
                 "institution": request.institution or ""
             })
 
@@ -308,9 +308,9 @@ async def edit_badge_metadata(request: AppendDataRequest):
 
 
 @router.post("/optimize_badge_text")
-async def optimize_badge_text_endpoint(badge_data: dict, max_title_chars: int = 25):
+async def optimize_badge_text_endpoint(badge_data: dict):
     """Optimize badge text for image overlay"""
-    return await optimize_badge_text(badge_data, max_title_chars)
+    return await optimize_badge_text(badge_data)
 
 @router.get("/badge_history")
 async def get_badge_history():
@@ -1235,5 +1235,39 @@ async def check_ollama_status():
         raise HTTPException(
             status_code=500,
             detail=f"Error checking Ollama status: {str(e)}"
+        )
+
+
+@router.post("/badge/generate")
+async def proxy_badge_generate(request: Request):
+    """Proxy badge generation requests to badge-image service"""
+    try:
+        body = await request.json()
+
+        # Forward to badge-image service
+        badge_image_url = f"{settings.BADGE_IMAGE_SERVICE_URL}/api/v1/badge/generate"
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(badge_image_url, json=body)
+            response.raise_for_status()
+            return response.json()
+
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Badge image service returned error: {e.response.status_code}")
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"Badge image service error: {e.response.text}"
+        )
+    except httpx.ConnectError as e:
+        logger.error(f"Cannot connect to badge image service: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cannot connect to badge image service at {settings.BADGE_IMAGE_SERVICE_URL}"
+        )
+    except Exception as e:
+        logger.exception(f"Error proxying badge generation: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error proxying badge generation: {str(e)}"
         )
 
