@@ -85,7 +85,7 @@ async def generate_badge(request: BadgeRequest):
         else:  # text_overlay
             optimized_text = await optimize_badge_text({
                 "badge_name": validated.badge_name,
-                #"badge_description": validated.badge_description,
+                "badge_description": validated.badge_description,
                 "institution": request.institution or ""
             })
 
@@ -501,7 +501,7 @@ Parameters:
                                     logger.warning(f"Failed to scrape colors from {request.institute_url}: {color_error}")
 
                             # Generate image configuration with random selection
-                            image_type = random.choice(["text_overlay", "icon_based"])
+                            image_type = random.choice(["icon_based", "icon_based"])
                             logger.info(f"Selected image type: {image_type}")
 
                             if image_type == "icon_based":
