@@ -8,6 +8,18 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+
+def extract_metrics(ollama_response: Dict[str, Any]) -> Dict[str, Optional[int]]:
+    """Extract metrics from Ollama API response."""
+    return {
+        "total_duration": ollama_response.get("total_duration"),
+        "load_duration": ollama_response.get("load_duration"),
+        "prompt_eval_count": ollama_response.get("prompt_eval_count"),
+        "prompt_eval_duration": ollama_response.get("prompt_eval_duration"),
+        "eval_count": ollama_response.get("eval_count"),
+        "eval_duration": ollama_response.get("eval_duration")
+    }
+
 class OllamaClient:
     def __init__(self):
         self.api_url = settings.OLLAMA_API_URL
@@ -59,14 +71,24 @@ class OllamaClient:
                                 
                                 # Handle final response
                                 elif data.get("done", False):
+                                    # Extract metrics
+                                    metrics = extract_metrics(data)
+                                    
+                                    # Log metrics
+                                    prompt_count = metrics.get("prompt_eval_count") or 0
+                                    eval_count = metrics.get("eval_count") or 0
+                                    logger.info(
+                                        f"Ollama metrics [{request_id}]: "
+                                        f"prompt_eval_count={prompt_count}, "
+                                        f"eval_count={eval_count}, "
+                                        f"total={prompt_count + eval_count}"
+                                    )
+                                    
                                     yield {
                                         "type": "final",
                                         "content": accumulated_response,
                                         "request_id": request_id,
-                                        "total_duration": data.get("total_duration"),
-                                        "load_duration": data.get("load_duration"),
-                                        "prompt_eval_count": data.get("prompt_eval_count"),
-                                        "eval_count": data.get("eval_count")
+                                        "metrics": metrics
                                     }
                                     break
                                     
@@ -100,8 +122,8 @@ class OllamaClient:
                 "error_code": "unexpected_error"
             }
 
-    async def generate(self, prompt: str, config: Optional[Dict] = None) -> str:
-        """Make async API call to Ollama."""
+    async def generate(self, prompt: str, config: Optional[Dict] = None) -> tuple[str, Dict[str, Any]]:
+        """Make async API call to Ollama. Returns (response_text, metrics)."""
         if config is None:
             config = self.model_config.copy()
         else:
@@ -128,9 +150,21 @@ class OllamaClient:
                 result = response.json()
                 
                 response_text = result.get("response", "").strip()
-                logger.info(f"Non-streaming request {request_id} completed successfully, response length: {len(response_text)}")
                 
-                return response_text
+                # Extract metrics
+                metrics = extract_metrics(result)
+                
+                # Log metrics
+                prompt_count = metrics.get("prompt_eval_count") or 0
+                eval_count = metrics.get("eval_count") or 0
+                logger.info(
+                    f"Non-streaming request {request_id} completed. "
+                    f"Response length: {len(response_text)}, "
+                    f"Ollama metrics: prompt_eval_count={prompt_count}, "
+                    f"eval_count={eval_count}, total={prompt_count + eval_count}"
+                )
+                
+                return response_text, metrics
                 
         except httpx.TimeoutException:
             logger.error("Model request timed out for request_id: %s", request_id)
@@ -144,8 +178,8 @@ class OllamaClient:
 
     async def generate_with_parameters(self, prompt: str, temperature: float = 0.15, 
                                      max_tokens: int = 400, top_p: float = 0.8, 
-                                     top_k: int = 30, repeat_penalty: float = 1.05) -> str:
-        """Generate response with specific parameters."""
+                                     top_k: int = 30, repeat_penalty: float = 1.05) -> tuple[str, Dict[str, Any]]:
+        """Generate response with specific parameters. Returns (response_text, metrics)."""
         config = {
             "temperature": temperature,
             "num_predict": max_tokens,
@@ -154,6 +188,21 @@ class OllamaClient:
             "repeat_penalty": repeat_penalty
         }
         return await self.generate(prompt, config)
+    
+    def get_metrics_from_stream(self, stream_chunks: list) -> Optional[Dict[str, Any]]:
+        """
+        Extract metrics from a completed stream.
+        
+        Args:
+            stream_chunks: List of chunks from a completed stream
+            
+        Returns:
+            Metrics dictionary if found, None otherwise
+        """
+        for chunk in reversed(stream_chunks):  # Look for final chunk
+            if chunk.get("type") == "final" and "metrics" in chunk:
+                return chunk["metrics"]
+        return None
 
 # Global client instance
 ollama_client = OllamaClient()
@@ -164,12 +213,12 @@ async def call_model_stream_async(prompt: str, **kwargs) -> AsyncGenerator[Dict[
     async for chunk in ollama_client.generate_stream(prompt, **kwargs):
         yield chunk
 
-async def call_model_async(prompt: str, config: Optional[Dict] = None) -> str:
-    """Convenience function for non-streaming model calls"""
+async def call_model_async(prompt: str, config: Optional[Dict] = None) -> tuple[str, Dict[str, Any]]:
+    """Convenience function for non-streaming model calls. Returns (response_text, metrics)."""
     return await ollama_client.generate(prompt, config)
 
-async def call_model_with_params_async(prompt: str, **kwargs) -> str:
-    """Convenience function for model calls with specific parameters"""
+async def call_model_with_params_async(prompt: str, **kwargs) -> tuple[str, Dict[str, Any]]:
+    """Convenience function for model calls with specific parameters. Returns (response_text, metrics)."""
     return await ollama_client.generate_with_parameters(prompt, **kwargs)
 
 async def preload_model() -> bool:

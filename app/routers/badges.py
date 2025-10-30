@@ -97,6 +97,9 @@ async def generate_badge(request: BadgeRequest):
         # Generate badge ID
         badge_id = str(uuid.uuid4())
 
+        # Extract metrics
+        metrics = badge_json.get("metrics", {})
+        
         # Transform to new JSON schema format
         result = BadgeResponse(
             credentialSubject={
@@ -111,7 +114,8 @@ async def generate_badge(request: BadgeRequest):
                 }
             },
             imageConfig=image_config,
-            badge_id=badge_id
+            badge_id=badge_id,
+            metrics=metrics
         )
 
         # Store in history with the full result for editing capability
@@ -130,7 +134,8 @@ async def generate_badge(request: BadgeRequest):
             "selected_parameters": badge_json.get("selected_parameters", {}),
             "badge_id": badge_id,
             "result": result,  # Store the full result for editing
-            "generation_time": time.time() - start_time
+            "generation_time": time.time() - start_time,
+            "metrics": metrics
         }
         badge_history.append(history_entry)
         
@@ -223,6 +228,9 @@ async def regenerate_badge(request: RegenerationRequest):
         # Generate badge ID
         badge_id = str(uuid.uuid4())
 
+        # Extract metrics
+        metrics = badge_json.get("metrics", {})
+
         # Transform to new JSON schema format
         result = BadgeResponse(
             credentialSubject={
@@ -237,7 +245,8 @@ async def regenerate_badge(request: RegenerationRequest):
                 }
             },
             imageConfig=image_config,
-            badge_id=badge_id
+            badge_id=badge_id,
+            metrics=metrics
         )
 
         logger.info(f"Regenerated badge ID {badge_id} with overridden parameters: {request.regenerate_parameters}")
@@ -411,6 +420,7 @@ Parameters:
         async def generate_stream_response():
             nonlocal request_id
             accumulated_text = ""
+            token_usage_data = None  # Track token usage
             
             try:
                 # Call the service layer for streaming generation
@@ -425,6 +435,10 @@ Parameters:
                     # Track request ID for logging
                     if chunk.get("request_id") and not request_id:
                         request_id = chunk.get("request_id")
+                    
+                    # Capture metrics from final chunk
+                    if chunk.get("type") == "final" and "metrics" in chunk:
+                        token_usage_data = chunk.get("metrics")
                     
                     # Handle different chunk types
                     if chunk.get("type") == "token":
@@ -577,7 +591,8 @@ Parameters:
                                 "selected_parameters": badge_json.get("selected_parameters", {}),
                                 "badge_id": badge_id,
                                 "result": result,
-                                "generation_time": time.time() - start_time
+                                "generation_time": time.time() - start_time,
+                                "metrics": token_usage_data  # Add metrics to history
                             }
                             badge_history.append(history_entry)
                             
@@ -598,8 +613,12 @@ Parameters:
                                     "type": "final",
                                     "content": result_dict,
                                     "badge_id": badge_id,
-                                    "generation_time": time.time() - start_time
+                                    "generation_time": time.time() - start_time,
+                                    "metrics": token_usage_data  # Include metrics
                                 }
+                                
+                                # Metrics are logged in ollama_client
+                                
                                 yield format_streaming_response(final_chunk)
                                 
                             except Exception as dict_error:
@@ -752,6 +771,7 @@ Parameters:
         async def generate_stream_response():
             nonlocal request_id
             accumulated_text = ""
+            token_usage_data = None  # Track token usage
             
             try:
                 # Call the service layer for streaming generation
@@ -766,6 +786,10 @@ Parameters:
                     # Track request ID for logging
                     if chunk.get("request_id") and not request_id:
                         request_id = chunk.get("request_id")
+                    
+                    # Capture metrics from final chunk
+                    if chunk.get("type") == "final" and "metrics" in chunk:
+                        token_usage_data = chunk.get("metrics")
                     
                     # Handle different chunk types
                     if chunk.get("type") == "token":
@@ -897,7 +921,8 @@ Parameters:
                                 "selected_parameters": regenerated_json.get("selected_parameters", {}),
                                 "badge_id": badge_id,
                                 "result": result,
-                                "generation_time": time.time() - start_time
+                                "generation_time": time.time() - start_time,
+                                "ollama_metrics": token_usage_data  # Add Ollama metrics to history
                             }
                             badge_history.append(history_entry)
                             
@@ -918,8 +943,12 @@ Parameters:
                                     "type": "final",
                                     "content": result_dict,
                                     "badge_id": badge_id,
-                                    "generation_time": time.time() - start_time
+                                    "generation_time": time.time() - start_time,
+                                    "metrics": token_usage_data  # Include metrics
                                 }
+                                
+                                # Metrics are logged in ollama_client
+                                
                                 yield format_streaming_response(final_chunk)
                                 
                             except Exception as dict_error:
@@ -1099,6 +1128,7 @@ async def regenerate_field(request: FieldRegenerateRequest):
 
         # Generate new field value
         new_value = ""
+        metrics = {}
         async for chunk in ollama_client.generate_stream(
             content=prompt,
             temperature=MODEL_CONFIG.get("temperature", 0.15),
@@ -1110,6 +1140,7 @@ async def regenerate_field(request: FieldRegenerateRequest):
             if chunk.get("type") == "token":
                 new_value += chunk.get("content", "")
             elif chunk.get("type") == "final":
+                metrics = chunk.get("metrics", {})
                 break
             elif chunk.get("type") == "error":
                 raise HTTPException(status_code=500, detail=f"Model error: {chunk.get('content')}")
@@ -1176,6 +1207,9 @@ async def regenerate_field(request: FieldRegenerateRequest):
         #     }
         #     updated_badge.imageConfig = image_config
 
+        # Add metrics to updated badge
+        updated_badge.metrics = metrics
+        
         # Store in history
         history_entry = {
             "id": len(badge_history) + 1,
@@ -1187,7 +1221,8 @@ async def regenerate_field(request: FieldRegenerateRequest):
             "institution": request.institution,
             "badge_id": updated_badge.badge_id,
             "result": updated_badge,
-            "generation_time": time.time() - start_time
+            "generation_time": time.time() - start_time,
+            "metrics": metrics
         }
         badge_history.append(history_entry)
 
