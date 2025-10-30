@@ -60,9 +60,9 @@ class Settings(BaseSettings):
     }
     
     CRITERION_TEMPLATES: Dict = {
-        "Task-Oriented": "[Action verb], [action verb], [action verb]... (imperative commands directing learners to perform tasks)",
-        "Evidence-Based": "Learner has/can/successfully [action verb], has/can/effectively [action verb], has/can/accurately [action verb]... (focusing on demonstrated abilities and accomplishments)",
-        "Outcome-Focused": "Students will be able to [action verb], will be prepared to [action verb], will [action verb]... (future tense emphasizing expected outcomes and capabilities)"
+       "Task-Oriented": "The learner explains, determines, analyzes, evaluates, applies... (simple present tense action verbs describing what learners demonstrate). Example: The learner determines the tax treatment for items reflected in individual income tax returns. Do NOT use 'Upon completion' prefixes.",
+        "Evidence-Based": "The Learner has/can/successfully [action verb], has/can/effectively [action verb], has/can/accurately [action verb]... (focusing on demonstrated abilities and accomplishments)",
+        "Outcome-Focused": "The Learner will be able to [action verb], will be prepared to [action verb], will [action verb]... (future tense emphasizing expected outcomes and capabilities)"
     }
     
     model_config = {"env_file": ".env"}  # Updated for Pydantic v2
