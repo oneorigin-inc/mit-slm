@@ -129,29 +129,35 @@ Parameters:
     return result
 
 
-async def optimize_badge_text(badge_data: dict, max_title_chars: int = 30):
-    """Optimize badge text for image overlay, without institute name"""
+async def optimize_badge_text(badge_data: dict):
+    """Optimize badge text for image overlay with strict word limits"""
     prompt = f"""Badge: "{badge_data['badge_name']}"
 Description: "{badge_data['badge_description']}"
 
-Generate optimized overlay text. CRITICAL: All text must be complete phrases without ellipsis (...) or truncation.
+Generate optimized overlay text with STRICT WORD LIMITS:
 
-Character Limits:
-- short_title: max {max_title_chars} chars (rephrase if needed, never truncate)
-- brief_description: 25-30 chars
-- achievement_phrase: 20-25 chars (creative slogan or descriptive sentence!)
+CRITICAL REQUIREMENTS:
+- short_title: MAXIMUM 2 WORDS (e.g., "Python Expert", "Data Analyst", "Cloud Architect")
+- achievement_phrase: MAXIMUM 3 WORDS (e.g., "Master of Code", "Innovation Leader", "Problem Solver")
 
-Achievement Phrase Guidelines:
-- Create catchy slogans, mini-sentences, or descriptive phrases
-- Be inspiring, celebratory, and memorable
-- Vary the structure: questions, statements, calls-to-action
+Guidelines:
+- Use concise, impactful phrases
+- Avoid articles (the, a, an) to save words
+- Use powerful action words
+- Make every word count
 
-Example: "Healthcare Crisis Navigator: Mastery in…" (BAD) → "Crisis Navigation Expert" (GOOD)
+Examples:
+GOOD:
+  - short_title: "Python Expert" (2 words)
+  - achievement_phrase: "Code with Confidence" (3 words)
+
+BAD:
+  - short_title: "Python Programming Specialist" (3 words - TOO LONG)
+  - achievement_phrase: "Expert in Data Analysis" (4 words - TOO LONG)
 
 Return JSON:
 {{
     "short_title": "",
-    "brief_description": "",
     "achievement_phrase": ""
 }}"""
 
