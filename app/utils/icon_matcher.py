@@ -23,6 +23,23 @@ ICONS_DATA =[
       ]
     },
     {
+  "name": "ai.png",
+  "display_name": "AI",
+  "category": "technology",
+  "description": "Represents artificial intelligence, machine learning, deep learning, neural networks, AI/ML expertise, intelligent systems, automation, data science, and cutting-edge technology innovation",
+  "keywords": ["artificial intelligence","machine learning", "deep learning", "neural networks", "AI", "ML", "automation", "data science", "algorithms", "intelligent systems"],
+  "use_cases": [
+    "AI/ML course completion",
+    "Machine learning expertise",
+    "AI project development",
+    "Deep learning mastery",
+    "Data science achievement",
+    "AI innovation badges",
+    "Algorithm design proficiency",
+    "Neural network implementation"
+  ]
+},
+    {
       "name": "binary-code.png",
       "display_name": "Binary Code",
       "category": "technology",
@@ -676,7 +693,7 @@ async def get_icon_suggestions_for_badge(
         
         if not processed_query:
             logger.warning(f"Empty query after preprocessing for badge: {badge_name}")
-            return _get_fallback_response(badge_name, badge_description, top_k)
+            return _get_fallback_response(badge_name, badge_description)
         
         # Prepare icon texts for comparison
         icon_texts = []
@@ -685,6 +702,7 @@ async def get_icon_suggestions_for_badge(
             icon_keywords = ' '.join(icon.get('keywords', []))
             icon_use_cases = ' '.join(icon.get('use_cases', []))
             icon_description = icon.get('description', '')
+            
             
             # Build comprehensive icon text
             icon_text = f"{icon_description} {icon_keywords} {icon_use_cases}".strip()
@@ -723,14 +741,14 @@ async def get_icon_suggestions_for_badge(
                 f"(score: {top_icon['similarity_score']:.4f})"
             )
         
-        # Use smart fallback if similarity is too low
-        if not top_icon or top_icon["similarity_score"] < 0.15:
+        # Use simple fallback if similarity is too low
+        if not top_icon or top_icon["similarity_score"] < 0.1:
             score_msg = f"{top_icon['similarity_score']:.4f}" if top_icon else "N/A"
             logger.warning(
-                f"Low similarity score ({score_msg} < 0.15) "
-                f"for badge: {badge_name}. Using smart fallback."
+                f"Low similarity score ({score_msg} < 0.1) "
+                f"for badge: {badge_name}. Using simple fallback."
             )
-            return _get_smart_fallback_response(
+            return _get_simple_fallback_response(
                 badge_name,
                 badge_description,
                 alternatives[:top_k-1]
@@ -748,6 +766,7 @@ async def get_icon_suggestions_for_badge(
         # Fallback to keyword matching if no icons data
         logger.info(f"No icons data available. Using keyword fallback for: {badge_name}")
         return _get_keyword_fallback_response(badge_name, badge_description, combined_text, top_k)
+
 
 def _get_keyword_fallback_response(
     badge_name: str,
@@ -779,9 +798,9 @@ def _get_keyword_fallback_response(
             for icon, score in sorted_icons[1:top_k]
         ]
     else:
-        # No keyword matches - use smart fallback
+        # No keyword matches - use simple fallback
         logger.warning(f"No keyword matches for badge: {badge_name}")
-        return _get_smart_fallback_response(badge_name, badge_description, [])
+        return _get_simple_fallback_response(badge_name, badge_description, [])
     
     return {
         "suggested_icon": {
@@ -797,66 +816,53 @@ def _get_keyword_fallback_response(
     }
 
 
-def _get_smart_fallback_response(
+import random
+
+def _get_simple_fallback_response(
     badge_name: str,
     badge_description: str,
     alternatives: List[Dict[str, Any]]
 ) -> Dict[str, Any]:
     """
-    Smart fallback that tries to match based on content categories.
-    Used when similarity scores are too low or no data available.
+    Simple fallback: randomly selects star or trophy with 50% probability each.
+    Used when similarity scores are too low.
     """
-    combined_text = f"{badge_name} {badge_description}".lower()
-
-    # Initialize icon with default type
-    icon: Dict[str, Any] = {"name": "trophy.png", "display_name": "Trophy", "category": "achievement"}
-
-    # Category-based matching
-    if any(word in combined_text for word in ['chemistry', 'chemical', 'molecule', 'atom', 'lab']):
-        icon = {"name": "atom.png", "display_name": "Atom", "category": "science"}
-    elif any(word in combined_text for word in ['code', 'coding', 'programming', 'software', 'developer', 'binary']):
-        icon = {"name": "binary-code.png", "display_name": "Binary Code", "category": "technology"}
-    elif any(word in combined_text for word in ['science', 'scientific', 'research', 'experiment']):
-        icon = {"name": "atom.png", "display_name": "Science", "category": "science"}
-    elif any(word in combined_text for word in ['education', 'teaching', 'learning', 'teacher', 'student', 'praxis']):
-        icon = {"name": "book.png", "display_name": "Education", "category": "education"}
-    elif any(word in combined_text for word in ['math', 'mathematics', 'calculus', 'algebra', 'geometry']):
-        icon = {"name": "calculator.png", "display_name": "Mathematics", "category": "math"}
-    elif any(word in combined_text for word in ['art', 'design', 'creative', 'drawing', 'painting']):
-        icon = {"name": "color-palette.png", "display_name": "Art", "category": "creative"}
-    elif any(word in combined_text for word in ['music', 'musical', 'instrument', 'song', 'melody']):
-        icon = {"name": "music_note.png", "display_name": "Music", "category": "creative"}
-    elif any(word in combined_text for word in ['fitness', 'exercise', 'workout', 'health', 'sport']):
-        icon = {"name": "dumbbell.png", "display_name": "Fitness", "category": "health"}
-    elif any(word in combined_text for word in ['goal', 'target', 'objective', 'milestone']):
-        icon = {"name": "goal.png", "display_name": "Goal", "category": "achievement"}
-    elif any(word in combined_text for word in ['star', 'excellence', 'outstanding', 'exceptional']):
-        icon = {"name": "star.png", "display_name": "Star", "category": "achievement"}
-
-    # Complete the icon data
-    icon.update({
-        "description": f"Category-matched icon for {badge_name}",
-        "keywords": [],
-        "similarity_score": 0.5
-    })
+    # 50% probability for star or trophy
+    if random.choice([True, False]):
+        icon = {
+            "name": "star.png",
+            "display_name": "Star",
+            "category": "achievement",
+            "description": "Excellence achievement icon",
+            "keywords": ["excellence", "outstanding", "best"],
+            "similarity_score": 0.1
+        }
+    else:
+        icon = {
+            "name": "trophy.png",
+            "display_name": "Trophy",
+            "category": "achievement",
+            "description": "General achievement icon",
+            "keywords": ["achievement", "success", "completion"],
+            "similarity_score": 0.1
+        }
     
-    logger.info(f"Smart fallback selected: {icon['name']} for badge: {badge_name}")
+    logger.info(f"Simple fallback selected: {icon['name']} for badge: {badge_name}")
     
     return {
         "suggested_icon": icon,
         "alternatives": alternatives,
-        "matching_method": "smart_category_fallback",
+        "matching_method": "simple_fallback",
         "total_icons_available": len(ICONS_DATA) if ICONS_DATA else 0
     }
 
 
 def _get_fallback_response(
     badge_name: str,
-    badge_description: str,
-    top_k: int
+    badge_description: str
 ) -> Dict[str, Any]:
-    """Complete fallback when everything else fails"""
-    logger.error(f"Using complete fallback for badge: {badge_name}")
+    """Emergency fallback - always uses trophy"""
+    logger.error(f"Using emergency fallback for badge: {badge_name}")
     
     return {
         "suggested_icon": {
@@ -869,6 +875,5 @@ def _get_fallback_response(
         },
         "alternatives": [],
         "matching_method": "emergency_fallback",
-        "total_icons_available": 0,
-        "error": "Icon matching failed - using default"
+        "total_icons_available": 0
     }
