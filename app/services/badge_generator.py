@@ -120,8 +120,11 @@ Parameters:
     # Minimal prompt - Modelfile handles all the complex instructions
     prompt = user_content
     
-    response = await call_model_async(prompt)
+    response, metrics = await call_model_async(prompt)
     result = extract_json_from_response(response)
+    
+    # Add metrics to result
+    result['metrics'] = metrics
     result["raw_model_output"] = response
     result["selected_parameters"] = random_params
     result["processed_course_input"] = processed_course_input
@@ -161,8 +164,10 @@ Return JSON:
     "achievement_phrase": ""
 }}"""
 
-    response = await call_model_async(prompt)
-    return extract_json_from_response(response)
+    response, metrics = await call_model_async(prompt)
+    result = extract_json_from_response(response)
+    result['metrics'] = metrics
+    return result
 
 async def generate_badge_metadata_stream_async(request) -> AsyncGenerator[Dict[str, Any], None]:
     """Generate badge metadata with streaming response using new format"""
