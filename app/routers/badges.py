@@ -1306,3 +1306,78 @@ async def proxy_badge_generate(request: Request):
             detail=f"Error proxying badge generation: {str(e)}"
         )
 
+
+
+@router.post("/badge/generate-with-logo")
+async def proxy_badge_generate_with_logo(request: Request):
+    """
+    Proxy badge generation with custom logo to badge-image service.
+
+    Accepts multipart/form-data with:
+    - logo: File upload (PNG or SVG)
+    - config: JSON string with badge configuration
+
+    """
+    try:
+        form = await request.form()
+
+        # Extract logo file and config
+        logo_file = form.get("logo")
+        config_str = form.get("config")
+
+        if not logo_file:
+            raise HTTPException(status_code=400, detail="Missing 'logo' file in form data")
+        if not config_str:
+            raise HTTPException(status_code=400, detail="Missing 'config' field in form data")
+
+        # Validate that logo_file is not a string (must be UploadFile)
+        if isinstance(logo_file, str):
+            raise HTTPException(status_code=400, detail="'logo' must be a file upload, not a string")
+
+        # Forward to badge-image service
+        badge_image_url = f"{settings.BADGE_IMAGE_SERVICE_URL}/api/v1/badge/generate-with-logo"
+
+        # Read file content
+        logo_content = await logo_file.read()
+
+        # Get filename and content type safely
+        filename = getattr(logo_file, 'filename', 'logo.png')
+        content_type = getattr(logo_file, 'content_type', 'image/png')
+
+        # Prepare multipart form data for httpx
+        files = {
+            "logo": (filename, logo_content, content_type)
+        }
+        data = {
+            "config": config_str
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                badge_image_url,
+                files=files,
+                data=data
+            )
+            response.raise_for_status()
+            return response.json()
+
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Badge image service returned error: {e.response.status_code}")
+        raise HTTPException(
+            status_code=e.response.status_code,
+            detail=f"Badge image service error: {e.response.text}"
+        )
+    except httpx.ConnectError as e:
+        logger.error(f"Cannot connect to badge image service: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Cannot connect to badge image service at {settings.BADGE_IMAGE_SERVICE_URL}"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error proxying badge generation with logo: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error proxying badge generation: {str(e)}"
+        )
