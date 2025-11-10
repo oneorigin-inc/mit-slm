@@ -85,7 +85,7 @@ async def generate_badge(request: BadgeRequest):
         else:  # text_overlay
             optimized_text = await optimize_badge_text({
                 "badge_name": validated.badge_name,
-                #"badge_description": validated.badge_description,
+                "badge_description": validated.badge_description,
                 "institution": request.institution or ""
             })
 
@@ -381,7 +381,7 @@ def _normalize_badge_json(badge_json: Dict[str, Any]) -> Dict[str, Any]:
 
 @router.post("/generate-badge-suggestions/stream")
 async def generate_badge_stream(request: BadgeRequest):
-    """Generate badge suggestions with streaming response"""
+    """Generate badge suggestions with streaming response"""    
     start_time = time.time()
     request_id = None
     badge_id = str(uuid.uuid4())
@@ -413,10 +413,13 @@ Parameters:
         prompt = user_content
         
         
-        # Import ollama service
+         # Import ollama service
         from app.services.ollama_client import ollama_client
         MODEL_CONFIG = settings.MODEL_CONFIG
 
+        # Get user provided context length or fallback to config default
+        context_length = getattr(request, "context_length", None) or MODEL_CONFIG.get("num_ctx", 2048)
+        
         async def generate_stream_response():
             nonlocal request_id
             accumulated_text = ""
@@ -430,16 +433,16 @@ Parameters:
                     max_tokens=MODEL_CONFIG.get("num_predict", 1024),
                     top_p=MODEL_CONFIG.get("top_p", 0.8),
                     top_k=MODEL_CONFIG.get("top_k", 30),
-                    repeat_penalty=MODEL_CONFIG.get("repeat_penalty", 1.05)
+                    repeat_penalty=MODEL_CONFIG.get("repeat_penalty", 1.05),
+                    context_length=context_length  # pass user context length
                 ):
                     # Track request ID for logging
                     if chunk.get("request_id") and not request_id:
                         request_id = chunk.get("request_id")
-                    
-                    # Capture metrics from final chunk
-                    if chunk.get("type") == "final" and "metrics" in chunk:
-                        token_usage_data = chunk.get("metrics")
-                    
+
+                    if chunk.get("token_usage"):
+                        token_usage_data = chunk.get("token_usage")
+
                     # Handle different chunk types
                     if chunk.get("type") == "token":
                         # Stream individual tokens
@@ -592,7 +595,7 @@ Parameters:
                                 "badge_id": badge_id,
                                 "result": result,
                                 "generation_time": time.time() - start_time,
-                                "metrics": token_usage_data  # Add metrics to history
+                                "metrics": token_usage_data or {}
                             }
                             badge_history.append(history_entry)
                             
@@ -614,11 +617,8 @@ Parameters:
                                     "content": result_dict,
                                     "badge_id": badge_id,
                                     "generation_time": time.time() - start_time,
-                                    "metrics": token_usage_data  # Include metrics
+                                    "metrics": token_usage_data or {}
                                 }
-                                
-                                # Metrics are logged in ollama_client
-                                
                                 yield format_streaming_response(final_chunk)
                                 
                             except Exception as dict_error:
