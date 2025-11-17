@@ -33,10 +33,9 @@ class Settings(BaseSettings):
     NLTK_AVAILABLE: bool = True
 
     # LAiSER Skill Extraction Configuration
-    LAISER_ENABLED: bool = os.getenv("LAISER_ENABLED", "false").lower() == "true"
     LAISER_MODEL_ID: str = os.getenv("LAISER_MODEL_ID", "bert-base-uncased")
     LAISER_HF_TOKEN: str = os.getenv("LAISER_HF_TOKEN", "")
-    LAISER_USE_GPU: bool = os.getenv("LAISER_USE_GPU", "true").lower() == "true"
+    LAISER_USE_GPU: bool = os.getenv("LAISER_USE_GPU", "false").lower() == "true"
     LAISER_TOP_K: int = int(os.getenv("LAISER_TOP_K", "10"))
 
     # Style Descriptions

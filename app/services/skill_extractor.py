@@ -1,6 +1,11 @@
 import logging
+import ssl
 from typing import List, Dict, Any, Optional
 from laiser.skill_extractor import Skill_Extractor
+
+# Fix SSL certificate verification issues on macOS
+# NOTE: This disables SSL verification - use only for trusted sources like GitHub
+ssl._create_default_https_context = ssl._create_unverified_context
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +62,7 @@ class SkillExtractionService:
             logger.info(f"Extracting top {top_k} skills from text (length: {len(text)} chars)")
 
             # Extract skills using LAiSER
-            skills = self.extractor.extract_skills(text, top_k=top_k)
+            skills = self.extractor.get_top_esco_skills(text, top_k=top_k)
 
             logger.info(f"Successfully extracted {len(skills)} skills")
             return skills

@@ -119,8 +119,8 @@ async def generate_badge(request: BadgeRequest):
             metrics=metrics
         )
 
-        # Extract skills using LAiSER if enabled
-        if settings.LAISER_ENABLED and skill_service.is_ready():
+        # Extract skills using LAiSER if enabled in request
+        if request.enable_skill_extraction and skill_service.is_ready():
             try:
                 # Combine course input and badge description for comprehensive skill extraction
                 skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
@@ -599,8 +599,8 @@ Parameters:
                                 badge_id=badge_id
                             )
 
-                            # Extract skills using LAiSER if enabled
-                            if settings.LAISER_ENABLED and skill_service.is_ready():
+                            # Extract skills using LAiSER if enabled in request
+                            if request.enable_skill_extraction and skill_service.is_ready():
                                 try:
                                     # Combine course input and badge description for comprehensive skill extraction
                                     skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
@@ -1293,12 +1293,8 @@ async def extract_skills_for_badge(badge_id: str, top_k: int = 10):
         JSON with extracted skills and metadata
     """
     try:
-        # Check if LAiSER is enabled
-        if not settings.LAISER_ENABLED:
-            raise HTTPException(
-                status_code=503,
-                detail="Skill extraction is disabled. Set LAISER_ENABLED=true in your environment."
-            )
+        # Check if LAiSER is enabled - Note: This endpoint always requires skill extraction
+        # For badge generation endpoints, use enable_skill_extraction in request body instead
 
         # Check if skill service is ready
         if not skill_service.is_ready():
