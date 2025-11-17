@@ -14,9 +14,9 @@ class Settings(BaseSettings):
 
     # Model Configuration
     MODEL_CONFIG: Dict = {
-        "temperature": 0.15,
-        "top_p": 0.8,
-        "top_k": 30,
+        "temperature": 0.10,
+        "top_p": 0.9,
+        "top_k": 25,
         "num_predict": 1024,
         "repeat_penalty": 1.05,
         "num_ctx": 6144,
@@ -31,7 +31,14 @@ class Settings(BaseSettings):
     
     # NLTK Configuration
     NLTK_AVAILABLE: bool = True
-    
+
+    # LAiSER Skill Extraction Configuration
+    LAISER_ENABLED: bool = os.getenv("LAISER_ENABLED", "false").lower() == "true"
+    LAISER_MODEL_ID: str = os.getenv("LAISER_MODEL_ID", "bert-base-uncased")
+    LAISER_HF_TOKEN: str = os.getenv("LAISER_HF_TOKEN", "")
+    LAISER_USE_GPU: bool = os.getenv("LAISER_USE_GPU", "true").lower() == "true"
+    LAISER_TOP_K: int = int(os.getenv("LAISER_TOP_K", "10"))
+
     # Style Descriptions
     STYLE_DESCRIPTIONS: Dict = {
     "Professional": "Style Instructions: Use formal, business-oriented language emphasizing industry standards and career advancement. Write in a professional corporate tone. Focus on business value, organizational impact, and career development. Use formal language suitable for executive presentations and HR documentation. Badge Naming: Create formal, professional titles that emphasize credibility and career value (e.g., 'Executive Leadership Certificate', 'Strategic Business Analyst Credential', 'Professional Project Management Badge'). Use titles that would appear on a resume or LinkedIn profile.",

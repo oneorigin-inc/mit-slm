@@ -3,12 +3,33 @@ from fastapi import FastAPI
 from app.routers import badges, health
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.logging import setup_logging
+from app.core.config import settings
 from app.services.ollama_client import preload_model
+from app.services.skill_extractor import skill_service
+import logging
+
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     await preload_model()
+
+    # Initialize LAiSER skill extractor if enabled
+    if settings.LAISER_ENABLED:
+        try:
+            logger.info("LAiSER skill extraction is enabled, initializing...")
+            await skill_service.initialize(
+                ai_model_id=settings.LAISER_MODEL_ID,
+                hf_token=settings.LAISER_HF_TOKEN,
+                use_gpu=settings.LAISER_USE_GPU
+            )
+            logger.info("LAiSER initialization complete")
+        except Exception as e:
+            logger.warning(f"LAiSER initialization failed: {e}. Continuing without skill extraction.")
+    else:
+        logger.info("LAiSER skill extraction is disabled")
+
     yield
     # Shutdown (if needed)
 
@@ -32,3 +53,4 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
 
+    

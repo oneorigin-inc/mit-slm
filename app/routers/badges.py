@@ -25,6 +25,7 @@ from app.services.image_client import generate_badge_with_text, generate_badge_w
 from app.services.text_processor import process_course_input
 from app.utils.icon_matcher import get_icon_suggestions_for_badge
 from app.core.config import settings
+from app.services.skill_extractor import skill_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -99,7 +100,7 @@ async def generate_badge(request: BadgeRequest):
 
         # Extract metrics
         metrics = badge_json.get("metrics", {})
-        
+
         # Transform to new JSON schema format
         result = BadgeResponse(
             credentialSubject={
@@ -117,6 +118,26 @@ async def generate_badge(request: BadgeRequest):
             badge_id=badge_id,
             metrics=metrics
         )
+
+        # Extract skills using LAiSER if enabled
+        if settings.LAISER_ENABLED and skill_service.is_ready():
+            try:
+                # Combine course input and badge description for comprehensive skill extraction
+                skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
+
+                extracted_skills = skill_service.extract_skills(
+                    text=skill_extraction_text,
+                    top_k=settings.LAISER_TOP_K
+                )
+
+                result.skills = extracted_skills
+                logger.info(f"Extracted {len(extracted_skills)} skills for badge {badge_id}")
+
+            except Exception as e:
+                logger.warning(f"Skill extraction failed for badge {badge_id}: {e}")
+                result.skills = []
+        else:
+            logger.debug("Skill extraction disabled or service not ready")
 
         # Store in history with the full result for editing capability
         history_entry = {
@@ -152,111 +173,111 @@ async def generate_badge(request: BadgeRequest):
         logger.exception("Unexpected error in /generate-badge-suggestions: %s", e)
         raise HTTPException(status_code=500, detail=f"Badge generation error: {str(e)}")
 
-@router.post("/regenerate_badge", response_model=BadgeResponse)
-async def regenerate_badge(request: RegenerationRequest):
-    """Regenerate badge with specific parameter overrides"""
-    start_time = time.time()
-    try:
-        # Create a mock request object for consistency
-        mock_request = BadgeRequest(
-            course_input=request.course_input,
-            badge_style="",  # Will be randomly overridden
-            badge_tone="",   # Will be randomly overridden
-            criterion_style="",  # Will be randomly overridden
-            badge_level="",  # Will be randomly overridden
-            custom_instructions=request.custom_instructions,
-            institution=request.institution
-        )
+# @router.post("/regenerate_badge", response_model=BadgeResponse)
+# async def regenerate_badge(request: RegenerationRequest):
+#     """Regenerate badge with specific parameter overrides"""
+#     start_time = time.time()
+#     try:
+#         # Create a mock request object for consistency
+#         mock_request = BadgeRequest(
+#             course_input=request.course_input,
+#             badge_style="",  # Will be randomly overridden
+#             badge_tone="",   # Will be randomly overridden
+#             criterion_style="",  # Will be randomly overridden
+#             badge_level="",  # Will be randomly overridden
+#             custom_instructions=request.custom_instructions,
+#             institution=request.institution
+#         )
 
-        # Get current random parameters
-        current_params = get_random_parameters(mock_request)
+#         # Get current random parameters
+#         current_params = get_random_parameters(mock_request)
 
-        # Apply regeneration overrides
-        regeneration_map = {param: "true" for param in request.regenerate_parameters}
-        updated_params = apply_regeneration_overrides(current_params, regeneration_map)
+#         # Apply regeneration overrides
+#         regeneration_map = {param: "true" for param in request.regenerate_parameters}
+#         updated_params = apply_regeneration_overrides(current_params, regeneration_map)
 
-        # Update mock request with new parameters
-        mock_request.badge_style = updated_params['badge_style']
-        mock_request.badge_tone = updated_params['badge_tone']
-        mock_request.criterion_style = updated_params['criterion_style']
-        mock_request.badge_level = updated_params['badge_level']
+#         # Update mock request with new parameters
+#         mock_request.badge_style = updated_params['badge_style']
+#         mock_request.badge_tone = updated_params['badge_tone']
+#         mock_request.criterion_style = updated_params['criterion_style']
+#         mock_request.badge_level = updated_params['badge_level']
 
-        # Generate badge with updated parameters
-        badge_json = await generate_badge_metadata_async(mock_request)
+#         # Generate badge with updated parameters
+#         badge_json = await generate_badge_metadata_async(mock_request)
 
-        try:
-            validated = BadgeValidated(
-                badge_name=badge_json.get("badge_name", ""),
-                badge_description=badge_json.get("badge_description", ""),
-                criteria=badge_json.get("criteria", {}),  # This already contains {"narrative": "string"}
-                raw_model_output=badge_json.get("raw_model_output", "")
-            )
-        except ValidationError as ve:
-            logger.warning("Badge validation failed: %s", ve)
-            raise HTTPException(status_code=502, detail=f"Badge schema validation error: {ve}")
+#         try:
+#             validated = BadgeValidated(
+#                 badge_name=badge_json.get("badge_name", ""),
+#                 badge_description=badge_json.get("badge_description", ""),
+#                 criteria=badge_json.get("criteria", {}),  # This already contains {"narrative": "string"}
+#                 raw_model_output=badge_json.get("raw_model_output", "")
+#             )
+#         except ValidationError as ve:
+#             logger.warning("Badge validation failed: %s", ve)
+#             raise HTTPException(status_code=502, detail=f"Badge schema validation error: {ve}")
 
-        # Generate image configuration
-        image_type = random.choice(["text_overlay", "icon_based"])
+#         # Generate image configuration
+#         image_type = random.choice(["text_overlay", "icon_based"])
 
-        if image_type == "icon_based":
-            icon_suggestions = await get_icon_suggestions_for_badge(
-                badge_name=validated.badge_name,
-                badge_description=validated.badge_description,
-                custom_instructions=request.custom_instructions or "",
-                top_k=3
-            )
+#         if image_type == "icon_based":
+#             icon_suggestions = await get_icon_suggestions_for_badge(
+#                 badge_name=validated.badge_name,
+#                 badge_description=validated.badge_description,
+#                 custom_instructions=request.custom_instructions or "",
+#                 top_k=3
+#             )
 
-            # Extract icon name from suggestions
-            icon_name = icon_suggestions.get('suggested_icon', {}).get('name', 'trophy.png')
+#             # Extract icon name from suggestions
+#             icon_name = icon_suggestions.get('suggested_icon', {}).get('name', 'trophy.png')
 
-            image_base64, image_config = await generate_badge_with_icon(
-                icon_name=icon_name
-            )
+#             image_base64, image_config = await generate_badge_with_icon(
+#                 icon_name=icon_name
+#             )
 
-        else:  # text_overlay
-            optimized_text = await optimize_badge_text({
-                "badge_name": validated.badge_name,
-                "badge_description": validated.badge_description,
-                "institution": request.institution or ""
-            })
+#         else:  # text_overlay
+#             optimized_text = await optimize_badge_text({
+#                 "badge_name": validated.badge_name,
+#                 "badge_description": validated.badge_description,
+#                 "institution": request.institution or ""
+#             })
 
-            image_base64, image_config = await generate_badge_with_text(
-                short_title=optimized_text.get("short_title", validated.badge_name),
-                achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
-            )
+#             image_base64, image_config = await generate_badge_with_text(
+#                 short_title=optimized_text.get("short_title", validated.badge_name),
+#                 achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
+#             )
 
-        # Generate badge ID
-        badge_id = str(uuid.uuid4())
+#         # Generate badge ID
+#         badge_id = str(uuid.uuid4())
 
-        # Extract metrics
-        metrics = badge_json.get("metrics", {})
+#         # Extract metrics
+#         metrics = badge_json.get("metrics", {})
 
-        # Transform to new JSON schema format
-        result = BadgeResponse(
-            credentialSubject={
-                "achievement": {
-                    "criteria": validated.criteria,  # This is already {"narrative": "string"} format
-                    "description": validated.badge_description,
-                    "image": {
-                        "id": f"https://example.com/achievements/badge_{badge_id}/image",
-                        "image_base64": image_base64
-                    },
-                    "name": validated.badge_name
-                }
-            },
-            imageConfig=image_config,
-            badge_id=badge_id,
-            metrics=metrics
-        )
+#         # Transform to new JSON schema format
+#         result = BadgeResponse(
+#             credentialSubject={
+#                 "achievement": {
+#                     "criteria": validated.criteria,  # This is already {"narrative": "string"} format
+#                     "description": validated.badge_description,
+#                     "image": {
+#                         "id": f"https://example.com/achievements/badge_{badge_id}/image",
+#                         "image_base64": image_base64
+#                     },
+#                     "name": validated.badge_name
+#                 }
+#             },
+#             imageConfig=image_config,
+#             badge_id=badge_id,
+#             metrics=metrics
+#         )
 
-        logger.info(f"Regenerated badge ID {badge_id} with overridden parameters: {request.regenerate_parameters}")
-        return result
+#         logger.info(f"Regenerated badge ID {badge_id} with overridden parameters: {request.regenerate_parameters}")
+#         return result
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Unexpected error in /regenerate_badge: %s", e)
-        raise HTTPException(status_code=500, detail=f"Badge regeneration error: {str(e)}")
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.exception("Unexpected error in /regenerate_badge: %s", e)
+#         raise HTTPException(status_code=500, detail=f"Badge regeneration error: {str(e)}")
 
 @router.post("/edit-badge-metadata")
 async def edit_badge_metadata(request: AppendDataRequest):
@@ -578,6 +599,26 @@ Parameters:
                                 badge_id=badge_id
                             )
 
+                            # Extract skills using LAiSER if enabled
+                            if settings.LAISER_ENABLED and skill_service.is_ready():
+                                try:
+                                    # Combine course input and badge description for comprehensive skill extraction
+                                    skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
+
+                                    extracted_skills = skill_service.extract_skills(
+                                        text=skill_extraction_text,
+                                        top_k=settings.LAISER_TOP_K
+                                    )
+
+                                    result.skills = extracted_skills
+                                    logger.info(f"Extracted {len(extracted_skills)} skills for streaming badge {badge_id}")
+
+                                except Exception as e:
+                                    logger.warning(f"Skill extraction failed for streaming badge {badge_id}: {e}")
+                                    result.skills = []
+                            else:
+                                logger.debug("Skill extraction disabled or service not ready (streaming)")
+
                             # Store in history
                             history_entry = {
                                 "id": len(badge_history) + 1,
@@ -698,328 +739,328 @@ class BadgeRegenerateRequest(BaseModel):
     institution: Optional[str] = None  # Optional: override institution from last badge
 
     
-@router.post("/regenerate-badge-stream")
-async def regenerate_badge_stream(request: BadgeRegenerateRequest):
-    """Regenerate badge using custom instructions and automatically retrieved context"""
-    start_time = time.time()
-    request_id = None
-    badge_id = str(uuid.uuid4())
+# @router.post("/regenerate-badge-stream")
+# async def regenerate_badge_stream(request: BadgeRegenerateRequest):
+#     """Regenerate badge using custom instructions and automatically retrieved context"""
+#     start_time = time.time()
+#     request_id = None
+#     badge_id = str(uuid.uuid4())
     
-    try:
-        # Get the last badge from history automatically
-        if not badge_history:
-            raise ValueError("No previous badge found in history. Please generate a badge first.")
+#     try:
+#         # Get the last badge from history automatically
+#         if not badge_history:
+#             raise ValueError("No previous badge found in history. Please generate a badge first.")
         
-        last_badge_entry = badge_history[-1]
+#         last_badge_entry = badge_history[-1]
         
-        # Extract previous badge data and course input from history
-        previous_badge = last_badge_entry.get("result")
-        course_input = last_badge_entry.get("course_input", "")
-        processed_content = last_badge_entry.get("processed_course_input", course_input)
+#         # Extract previous badge data and course input from history
+#         previous_badge = last_badge_entry.get("result")
+#         course_input = last_badge_entry.get("course_input", "")
+#         processed_content = last_badge_entry.get("processed_course_input", course_input)
         
-        # Get current parameters from previous badge
-        current_params = last_badge_entry.get("selected_parameters", {})
+#         # Get current parameters from previous badge
+#         current_params = last_badge_entry.get("selected_parameters", {})
         
-        # Extract previous badge achievement data
-        previous_badge_dict: Dict[str, Any] = {}
-        if isinstance(previous_badge, dict):
-            previous_badge_dict = previous_badge
-        elif previous_badge is not None:
-            # Try Pydantic v2 model_dump first, then v1 dict, then __dict__
-            try:
-                previous_badge_dict = previous_badge.model_dump()  # type: ignore
-            except AttributeError:
-                try:
-                    previous_badge_dict = previous_badge.dict()  # type: ignore
-                except AttributeError:
-                    if hasattr(previous_badge, '__dict__'):
-                        previous_badge_dict = previous_badge.__dict__
+#         # Extract previous badge achievement data
+#         previous_badge_dict: Dict[str, Any] = {}
+#         if isinstance(previous_badge, dict):
+#             previous_badge_dict = previous_badge
+#         elif previous_badge is not None:
+#             # Try Pydantic v2 model_dump first, then v1 dict, then __dict__
+#             try:
+#                 previous_badge_dict = previous_badge.model_dump()  # type: ignore
+#             except AttributeError:
+#                 try:
+#                     previous_badge_dict = previous_badge.dict()  # type: ignore
+#                 except AttributeError:
+#                     if hasattr(previous_badge, '__dict__'):
+#                         previous_badge_dict = previous_badge.__dict__
 
-        previous_achievement = previous_badge_dict.get('credentialSubject', {}).get('achievement', {})
+#         previous_achievement = previous_badge_dict.get('credentialSubject', {}).get('achievement', {})
         
-        # Build context with previous badge data
-        previous_badge_context = f"""Previous Badge Data:
-- Badge Name: {previous_achievement.get('name', 'N/A')}
-- Badge Description: {previous_achievement.get('description', 'N/A')}
-- Criteria: {json.dumps(previous_achievement.get('criteria', {}), indent=2)}"""
+#         # Build context with previous badge data
+#         previous_badge_context = f"""Previous Badge Data:
+# - Badge Name: {previous_achievement.get('name', 'N/A')}
+# - Badge Description: {previous_achievement.get('description', 'N/A')}
+# - Criteria: {json.dumps(previous_achievement.get('criteria', {}), indent=2)}"""
         
-        # Build user content with custom instructions
-        user_content = f"""Course Content: {processed_content}
+#         # Build user content with custom instructions
+#         user_content = f"""Course Content: {processed_content}
 
-{previous_badge_context}
+# {previous_badge_context}
 
-Custom Instructions: {request.custom_instructions}
+# Custom Instructions: {request.custom_instructions}
 
-Parameters:
-- Style: {settings.STYLE_DESCRIPTIONS.get(current_params.get('badge_style', 'professional'))}
-- Tone: {settings.TONE_DESCRIPTIONS.get(current_params.get('badge_tone', 'formal'))}
-- Level: {settings.LEVEL_DESCRIPTIONS.get(current_params.get('badge_level', 'intermediate'))}
-- Criterion Style: {settings.CRITERION_TEMPLATES.get(current_params.get('criterion_style', 'descriptive'))}"""
+# Parameters:
+# - Style: {settings.STYLE_DESCRIPTIONS.get(current_params.get('badge_style', 'professional'))}
+# - Tone: {settings.TONE_DESCRIPTIONS.get(current_params.get('badge_tone', 'formal'))}
+# - Level: {settings.LEVEL_DESCRIPTIONS.get(current_params.get('badge_level', 'intermediate'))}
+# - Criterion Style: {settings.CRITERION_TEMPLATES.get(current_params.get('criterion_style', 'descriptive'))}"""
 
-        institution = last_badge_entry.get("institution") or request.institution
-        if institution:
-            user_content += f"\n- Institution: {institution}"
+#         institution = last_badge_entry.get("institution") or request.institution
+#         if institution:
+#             user_content += f"\n- Institution: {institution}"
 
-        user_content += '\n\nBased on the custom instructions above, regenerate the badge. Keep fields unchanged if not mentioned in the instructions. Generate JSON with exact schema {"badge_name": "string", "badge_description": "string", "criteria": {"narrative": "string"}}:'
+#         user_content += '\n\nBased on the custom instructions above, regenerate the badge. Keep fields unchanged if not mentioned in the instructions. Generate JSON with exact schema {"badge_name": "string", "badge_description": "string", "criteria": {"narrative": "string"}}:'
 
-        prompt = user_content
+#         prompt = user_content
         
-        # Import ollama service
-        from app.services.ollama_client import ollama_client
-        MODEL_CONFIG = settings.MODEL_CONFIG
+#         # Import ollama service
+#         from app.services.ollama_client import ollama_client
+#         MODEL_CONFIG = settings.MODEL_CONFIG
 
-        async def generate_stream_response():
-            nonlocal request_id
-            accumulated_text = ""
-            token_usage_data = None  # Track token usage
+#         async def generate_stream_response():
+#             nonlocal request_id
+#             accumulated_text = ""
+#             token_usage_data = None  # Track token usage
             
-            try:
-                # Call the service layer for streaming generation
-                async for chunk in ollama_client.generate_stream(
-                    content=prompt,
-                    temperature=MODEL_CONFIG.get("temperature", 0.15),
-                    max_tokens=MODEL_CONFIG.get("num_predict", 400),
-                    top_p=MODEL_CONFIG.get("top_p", 0.8),
-                    top_k=MODEL_CONFIG.get("top_k", 30),
-                    repeat_penalty=MODEL_CONFIG.get("repeat_penalty", 1.05)
-                ):
-                    # Track request ID for logging
-                    if chunk.get("request_id") and not request_id:
-                        request_id = chunk.get("request_id")
+#             try:
+#                 # Call the service layer for streaming generation
+#                 async for chunk in ollama_client.generate_stream(
+#                     content=prompt,
+#                     temperature=MODEL_CONFIG.get("temperature", 0.15),
+#                     max_tokens=MODEL_CONFIG.get("num_predict", 400),
+#                     top_p=MODEL_CONFIG.get("top_p", 0.8),
+#                     top_k=MODEL_CONFIG.get("top_k", 30),
+#                     repeat_penalty=MODEL_CONFIG.get("repeat_penalty", 1.05)
+#                 ):
+#                     # Track request ID for logging
+#                     if chunk.get("request_id") and not request_id:
+#                         request_id = chunk.get("request_id")
                     
-                    # Capture metrics from final chunk
-                    if chunk.get("type") == "final" and "metrics" in chunk:
-                        token_usage_data = chunk.get("metrics")
+#                     # Capture metrics from final chunk
+#                     if chunk.get("type") == "final" and "metrics" in chunk:
+#                         token_usage_data = chunk.get("metrics")
                     
-                    # Handle different chunk types
-                    if chunk.get("type") == "token":
-                        # Stream individual tokens
-                        accumulated_text += chunk.get("content", "")
-                        formatted_chunk = format_streaming_response({
-                            "type": "token",
-                            "content": chunk.get("content", ""),
-                            "accumulated": accumulated_text,
-                            "badge_id": badge_id
-                        })
-                        yield formatted_chunk
+#                     # Handle different chunk types
+#                     if chunk.get("type") == "token":
+#                         # Stream individual tokens
+#                         accumulated_text += chunk.get("content", "")
+#                         formatted_chunk = format_streaming_response({
+#                             "type": "token",
+#                             "content": chunk.get("content", ""),
+#                             "accumulated": accumulated_text,
+#                             "badge_id": badge_id
+#                         })
+#                         yield formatted_chunk
                         
-                    elif chunk.get("type") == "final":
-                        # Process the final response with selective field update
-                        try:
-                            # Extract and parse JSON from the accumulated text
-                            raw_response = accumulated_text
+#                     elif chunk.get("type") == "final":
+#                         # Process the final response with selective field update
+#                         try:
+#                             # Extract and parse JSON from the accumulated text
+#                             raw_response = accumulated_text
                             
-                            # Try to extract JSON from the accumulated text
-                            try:
-                                # Look for JSON content between ```json and ```
-                                json_start = raw_response.find('```json')
-                                json_end = raw_response.find('```', json_start + 7)
+#                             # Try to extract JSON from the accumulated text
+#                             try:
+#                                 # Look for JSON content between ```json and ```
+#                                 json_start = raw_response.find('```json')
+#                                 json_end = raw_response.find('```', json_start + 7)
                                 
-                                if json_start != -1 and json_end != -1:
-                                    json_content = raw_response[json_start + 7:json_end].strip()
-                                    regenerated_json = json.loads(json_content)
-                                else:
-                                    # Fallback: try to extract JSON from the full response
-                                    regenerated_json = extract_json_from_response(raw_response)
+#                                 if json_start != -1 and json_end != -1:
+#                                     json_content = raw_response[json_start + 7:json_end].strip()
+#                                     regenerated_json = json.loads(json_content)
+#                                 else:
+#                                     # Fallback: try to extract JSON from the full response
+#                                     regenerated_json = extract_json_from_response(raw_response)
                                 
-                                raw_model_output_str = raw_response
-                            except json.JSONDecodeError as e:
-                                logger.error(f"Failed to parse JSON from accumulated text: {e}")
-                                error_chunk = {
-                                    "type": "error",
-                                    "content": f"Failed to parse JSON from response: {str(e)}",
-                                    "badge_id": badge_id
-                                }
-                                yield format_streaming_response(error_chunk)
-                                return
+#                                 raw_model_output_str = raw_response
+#                             except json.JSONDecodeError as e:
+#                                 logger.error(f"Failed to parse JSON from accumulated text: {e}")
+#                                 error_chunk = {
+#                                     "type": "error",
+#                                     "content": f"Failed to parse JSON from response: {str(e)}",
+#                                     "badge_id": badge_id
+#                                 }
+#                                 yield format_streaming_response(error_chunk)
+#                                 return
                             
-                            # Normalize regenerated JSON
-                            regenerated_json = _normalize_badge_json(regenerated_json)
+#                             # Normalize regenerated JSON
+#                             regenerated_json = _normalize_badge_json(regenerated_json)
                             
-                            # Use regenerated data directly
-                            regenerated_json["selected_parameters"] = current_params
-                            regenerated_json["processed_course_input"] = processed_content
+#                             # Use regenerated data directly
+#                             regenerated_json["selected_parameters"] = current_params
+#                             regenerated_json["processed_course_input"] = processed_content
 
-                            # Validate regenerated badge data
-                            try:
-                                validated = BadgeValidated(
-                                    badge_name=regenerated_json.get("badge_name", ""),
-                                    badge_description=regenerated_json.get("badge_description", ""),
-                                    criteria=regenerated_json.get("criteria", {}),
-                                    raw_model_output=raw_model_output_str
-                                )
-                            except ValidationError as ve:
-                                logger.warning("Badge validation failed: %s", ve)
-                                error_chunk = {
-                                    "type": "error",
-                                    "content": f"Badge schema validation error: {ve}",
-                                    "badge_id": badge_id
-                                }
-                                yield format_streaming_response(error_chunk)
-                                return
+#                             # Validate regenerated badge data
+#                             try:
+#                                 validated = BadgeValidated(
+#                                     badge_name=regenerated_json.get("badge_name", ""),
+#                                     badge_description=regenerated_json.get("badge_description", ""),
+#                                     criteria=regenerated_json.get("criteria", {}),
+#                                     raw_model_output=raw_model_output_str
+#                                 )
+#                             except ValidationError as ve:
+#                                 logger.warning("Badge validation failed: %s", ve)
+#                                 error_chunk = {
+#                                     "type": "error",
+#                                     "content": f"Badge schema validation error: {ve}",
+#                                     "badge_id": badge_id
+#                                 }
+#                                 yield format_streaming_response(error_chunk)
+#                                 return
 
-                            # Always regenerate image for regenerated badges
-                            image_type = random.choice(["text_overlay", "icon_based"])
-                            logger.info(f"Regenerating badge with image type: {image_type}")
+#                             # Always regenerate image for regenerated badges
+#                             image_type = random.choice(["text_overlay", "icon_based"])
+#                             logger.info(f"Regenerating badge with image type: {image_type}")
 
-                            if image_type == "icon_based":
-                                icon_suggestions_result = await get_icon_suggestions_for_badge(
-                                    badge_name=validated.badge_name,
-                                    badge_description=validated.badge_description,
-                                    custom_instructions=request.custom_instructions or "",
-                                    top_k=3
-                                )
+#                             if image_type == "icon_based":
+#                                 icon_suggestions_result = await get_icon_suggestions_for_badge(
+#                                     badge_name=validated.badge_name,
+#                                     badge_description=validated.badge_description,
+#                                     custom_instructions=request.custom_instructions or "",
+#                                     top_k=3
+#                                 )
 
-                                # Extract icon name from suggestions
-                                icon_name = icon_suggestions_result.get('suggested_icon', {}).get('name', 'trophy.png')
+#                                 # Extract icon name from suggestions
+#                                 icon_name = icon_suggestions_result.get('suggested_icon', {}).get('name', 'trophy.png')
 
-                                image_base64, image_config = await generate_badge_with_icon(
-                                    icon_name=icon_name
-                                )
+#                                 image_base64, image_config = await generate_badge_with_icon(
+#                                     icon_name=icon_name
+#                                 )
 
-                            else:  # text_overlay
-                                optimized_text = await optimize_badge_text({
-                                    "badge_name": validated.badge_name,
-                                    "badge_description": validated.badge_description,
-                                    "institution": institution or ""
-                                })
+#                             else:  # text_overlay
+#                                 optimized_text = await optimize_badge_text({
+#                                     "badge_name": validated.badge_name,
+#                                     "badge_description": validated.badge_description,
+#                                     "institution": institution or ""
+#                                 })
 
-                                image_base64, image_config = await generate_badge_with_text(
-                                    short_title=optimized_text.get("short_title", validated.badge_name),
+#                                 image_base64, image_config = await generate_badge_with_text(
+#                                     short_title=optimized_text.get("short_title", validated.badge_name),
                                    
-                                    achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
-                                )
-                            logger.info(f"Image regenerated | base64_len={len(image_base64) if isinstance(image_base64, str) else 0}")
+#                                     achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
+#                                 )
+#                             logger.info(f"Image regenerated | base64_len={len(image_base64) if isinstance(image_base64, str) else 0}")
 
-                            # Transform to new JSON schema format
-                            result = BadgeResponse(
-                                credentialSubject={
-                                    "achievement": {
-                                        "criteria": validated.criteria,
-                                        "description": validated.badge_description,
-                                        "image": {
-                                            "id": f"https://example.com/achievements/badge_{badge_id}/image",
-                                            "image_base64": image_base64
-                                        },
-                                        "name": validated.badge_name
-                                    }
-                                },
-                                imageConfig=image_config,
-                                badge_id=badge_id
-                            )
+#                             # Transform to new JSON schema format
+#                             result = BadgeResponse(
+#                                 credentialSubject={
+#                                     "achievement": {
+#                                         "criteria": validated.criteria,
+#                                         "description": validated.badge_description,
+#                                         "image": {
+#                                             "id": f"https://example.com/achievements/badge_{badge_id}/image",
+#                                             "image_base64": image_base64
+#                                         },
+#                                         "name": validated.badge_name
+#                                     }
+#                                 },
+#                                 imageConfig=image_config,
+#                                 badge_id=badge_id
+#                             )
 
-                            # Store in history
-                            history_entry = {
-                                "id": len(badge_history) + 1,
-                                "timestamp": datetime.now().isoformat(),
-                                "course_input": course_input,
-                                "processed_course_input": regenerated_json.get("processed_course_input", processed_content),
-                                "regeneration_type": "custom_instruction",
-                                "custom_instructions": request.custom_instructions,
-                                "institution": institution,
-                                "selected_image_type": image_type,
-                                "selected_parameters": regenerated_json.get("selected_parameters", {}),
-                                "badge_id": badge_id,
-                                "result": result,
-                                "generation_time": time.time() - start_time,
-                                "ollama_metrics": token_usage_data  # Add Ollama metrics to history
-                            }
-                            badge_history.append(history_entry)
+#                             # Store in history
+#                             history_entry = {
+#                                 "id": len(badge_history) + 1,
+#                                 "timestamp": datetime.now().isoformat(),
+#                                 "course_input": course_input,
+#                                 "processed_course_input": regenerated_json.get("processed_course_input", processed_content),
+#                                 "regeneration_type": "custom_instruction",
+#                                 "custom_instructions": request.custom_instructions,
+#                                 "institution": institution,
+#                                 "selected_image_type": image_type,
+#                                 "selected_parameters": regenerated_json.get("selected_parameters", {}),
+#                                 "badge_id": badge_id,
+#                                 "result": result,
+#                                 "generation_time": time.time() - start_time,
+#                                 "ollama_metrics": token_usage_data  # Add Ollama metrics to history
+#                             }
+#                             badge_history.append(history_entry)
                             
-                            if len(badge_history) > 50:
-                                badge_history.pop(0)
+#                             if len(badge_history) > 50:
+#                                 badge_history.pop(0)
 
-                            # Stream the final result
-                            try:
-                                # Convert result to dict safely
-                                if hasattr(result, 'dict'):
-                                    result_dict = result.dict()
-                                elif hasattr(result, '__dict__'):
-                                    result_dict = result.__dict__
-                                else:
-                                    result_dict = dict(result) if isinstance(result, dict) else {}
+#                             # Stream the final result
+#                             try:
+#                                 # Convert result to dict safely
+#                                 if hasattr(result, 'dict'):
+#                                     result_dict = result.dict()
+#                                 elif hasattr(result, '__dict__'):
+#                                     result_dict = result.__dict__
+#                                 else:
+#                                     result_dict = dict(result) if isinstance(result, dict) else {}
                                 
-                                final_chunk = {
-                                    "type": "final",
-                                    "content": result_dict,
-                                    "badge_id": badge_id,
-                                    "generation_time": time.time() - start_time,
-                                    "metrics": token_usage_data  # Include metrics
-                                }
+#                                 final_chunk = {
+#                                     "type": "final",
+#                                     "content": result_dict,
+#                                     "badge_id": badge_id,
+#                                     "generation_time": time.time() - start_time,
+#                                     "metrics": token_usage_data  # Include metrics
+#                                 }
                                 
-                                # Metrics are logged in ollama_client
+#                                 # Metrics are logged in ollama_client
                                 
-                                yield format_streaming_response(final_chunk)
+#                                 yield format_streaming_response(final_chunk)
                                 
-                            except Exception as dict_error:
-                                logger.error(f"Error converting result to dict: {dict_error}")
-                                # Fallback: create a simple response
-                                fallback_result = {
-                                    "credentialSubject": {
-                                        "achievement": {
-                                            "criteria": validated.criteria,
-                                            "description": validated.badge_description,
-                                            "image": {
-                                                "id": f"https://example.com/achievements/badge_{badge_id}/image",
-                                                "image_base64": image_base64
-                                            },
-                                            "name": validated.badge_name
-                                        }
-                                    },
-                                    "badge_id": badge_id
-                                }
+#                             except Exception as dict_error:
+#                                 logger.error(f"Error converting result to dict: {dict_error}")
+#                                 # Fallback: create a simple response
+#                                 fallback_result = {
+#                                     "credentialSubject": {
+#                                         "achievement": {
+#                                             "criteria": validated.criteria,
+#                                             "description": validated.badge_description,
+#                                             "image": {
+#                                                 "id": f"https://example.com/achievements/badge_{badge_id}/image",
+#                                                 "image_base64": image_base64
+#                                             },
+#                                             "name": validated.badge_name
+#                                         }
+#                                     },
+#                                     "badge_id": badge_id
+#                                 }
                                 
-                                final_chunk = {
-                                    "type": "final",
-                                    "content": fallback_result,
-                                    "badge_id": badge_id,
-                                    "generation_time": time.time() - start_time
-                                }
-                                yield format_streaming_response(final_chunk)
+#                                 final_chunk = {
+#                                     "type": "final",
+#                                     "content": fallback_result,
+#                                     "badge_id": badge_id,
+#                                     "generation_time": time.time() - start_time
+#                                 }
+#                                 yield format_streaming_response(final_chunk)
                             
-                            logger.info(f"Regenerated badge ID {badge_id}: '{validated.badge_name}'")
+#                             logger.info(f"Regenerated badge ID {badge_id}: '{validated.badge_name}'")
                             
-                        except Exception as e:
-                            logger.error(f"Error processing final response: {e}", exc_info=True)
-                            error_chunk = {
-                                "type": "error",
-                                "content": f"Error processing final response: {str(e)}",
-                                "badge_id": badge_id,
-                                "error_details": str(e)
-                            }
-                            yield format_streaming_response(error_chunk)
+#                         except Exception as e:
+#                             logger.error(f"Error processing final response: {e}", exc_info=True)
+#                             error_chunk = {
+#                                 "type": "error",
+#                                 "content": f"Error processing final response: {str(e)}",
+#                                 "badge_id": badge_id,
+#                                 "error_details": str(e)
+#                             }
+#                             yield format_streaming_response(error_chunk)
                             
-                    elif chunk.get("type") == "error":
-                        # Stream error chunks
-                        yield format_streaming_response(chunk)
+#                     elif chunk.get("type") == "error":
+#                         # Stream error chunks
+#                         yield format_streaming_response(chunk)
                 
-                # Log successful completion
-                log_response("Streaming badge regeneration", True, request_id)
+#                 # Log successful completion
+#                 log_response("Streaming badge regeneration", True, request_id)
                 
-            except Exception as e:
-                # Handle streaming errors
-                error_chunk = {
-                    "type": "error",
-                    "content": f"Streaming regeneration failed: {str(e)}",
-                    "request_id": request_id,
-                    "badge_id": badge_id
-                }
-                yield format_streaming_response(error_chunk)
-                log_response("Streaming badge regeneration", False, request_id)
+#             except Exception as e:
+#                 # Handle streaming errors
+#                 error_chunk = {
+#                     "type": "error",
+#                     "content": f"Streaming regeneration failed: {str(e)}",
+#                     "request_id": request_id,
+#                     "badge_id": badge_id
+#                 }
+#                 yield format_streaming_response(error_chunk)
+#                 log_response("Streaming badge regeneration", False, request_id)
         
-        # Create streaming response
-        return create_streaming_response(generate_stream_response())
+#         # Create streaming response
+#         return create_streaming_response(generate_stream_response())
         
-    except ValueError as e:
-        # Handle validation errors
-        error_msg = f"Validation error: {str(e)}"
-        logger.error(error_msg)
-        raise HTTPException(status_code=400, detail=error_msg)
+#     except ValueError as e:
+#         # Handle validation errors
+#         error_msg = f"Validation error: {str(e)}"
+#         logger.error(error_msg)
+#         raise HTTPException(status_code=400, detail=error_msg)
         
-    except Exception as e:
-        # Handle other errors
-        log_response("Streaming badge regeneration", False, request_id)
-        raise handle_error(e, "Streaming badge regeneration", request_id)
+#     except Exception as e:
+#         # Handle other errors
+#         log_response("Streaming badge regeneration", False, request_id)
+#         raise handle_error(e, "Streaming badge regeneration", request_id)
 
 def get_badge_from_history(badge_id: str) -> Dict[str, Any]:
     """Retrieve badge from history by badge_id"""
@@ -1237,6 +1278,75 @@ async def regenerate_field(request: FieldRegenerateRequest):
     except Exception as e:
         logger.exception("Unexpected error in /regenerate-field: %s", e)
         raise HTTPException(status_code=500, detail=f"Field regeneration error: {str(e)}")
+
+
+@router.post("/extract-skills/{badge_id}")
+async def extract_skills_for_badge(badge_id: str, top_k: int = 10):
+    """
+    Extract skills for an existing badge using LAiSER
+
+    Args:
+        badge_id: ID of the badge to extract skills from
+        top_k: Number of top skills to extract (default: 10)
+
+    Returns:
+        JSON with extracted skills and metadata
+    """
+    try:
+        # Check if LAiSER is enabled
+        if not settings.LAISER_ENABLED:
+            raise HTTPException(
+                status_code=503,
+                detail="Skill extraction is disabled. Set LAISER_ENABLED=true in your environment."
+            )
+
+        # Check if skill service is ready
+        if not skill_service.is_ready():
+            raise HTTPException(
+                status_code=503,
+                detail="Skill extractor is not initialized. Check server logs for initialization errors."
+            )
+
+        # Find badge in history
+        badge_entry = get_badge_from_history(badge_id)
+
+        # Extract badge data
+        result = badge_entry.get("result", {})
+        if hasattr(result, 'dict'):
+            result_dict = result.dict()
+        elif hasattr(result, '__dict__'):
+            result_dict = result.__dict__
+        else:
+            result_dict = result
+
+        achievement = result_dict.get("credentialSubject", {}).get("achievement", {})
+
+        # Combine course input and badge data for skill extraction
+        course_input = badge_entry.get("course_input", "")
+        badge_name = achievement.get("name", "")
+        badge_description = achievement.get("description", "")
+
+        skill_extraction_text = f"{course_input}\n\nBadge: {badge_name}\n{badge_description}"
+
+        # Extract skills
+        logger.info(f"Extracting {top_k} skills for badge {badge_id}")
+        skills = skill_service.extract_skills(skill_extraction_text, top_k=top_k)
+
+        return {
+            "badge_id": badge_id,
+            "skills": skills,
+            "count": len(skills),
+            "message": f"Successfully extracted {len(skills)} skills"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Unexpected error in /extract-skills: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Skill extraction error: {str(e)}"
+        )
 
 
 @router.get("/ollama-status")

@@ -28,10 +28,10 @@ class OllamaClient:
     async def generate_stream(
         self, 
         content: str, 
-        temperature: float = 0.15, 
+        temperature: float = 0.10, 
         max_tokens: int = 400,
-        top_p: float = 0.8, 
-        top_k: int = 30, 
+        top_p: float = 0.9, 
+        top_k: int = 50, 
         repeat_penalty: float = 1.05,
         context_length: Optional[int] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
