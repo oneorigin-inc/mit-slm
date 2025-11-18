@@ -1,5 +1,6 @@
 import logging
 import ssl
+import pandas as pd
 from typing import List, Dict, Any, Optional
 from laiser.skill_extractor import Skill_Extractor
 
@@ -45,14 +46,23 @@ class SkillExtractionService:
 
     def extract_skills(self, text: str, top_k: int = 10) -> List[Dict[str, Any]]:
         """
-        Extract skills from text
+        Extract skills from text using LAiSER's full extractor pipeline
 
         Args:
             text: Input text (course content or badge description)
             top_k: Number of top skills to extract
 
         Returns:
-            List of extracted skills with metadata
+            List of dicts with skill metadata:
+            - Research ID: Badge identifier
+            - Raw Skill: Skill name from ESCO taxonomy
+            - Skill Tag: ESCO code (e.g., "ESCO.1234")
+            - Knowledge Required: List (empty if use_gpu=False)
+            - Task Abilities: List (empty if use_gpu=False)
+            - Correlation Coefficient: Similarity score (0-1)
+
+        Note: With use_gpu=False (current setting), uses fast SkillNer extraction.
+              Knowledge Required and Task Abilities will be empty lists.
         """
         if not self._initialized or not self.extractor:
             logger.warning("Skill extractor not initialized, returning empty list")
@@ -61,11 +71,34 @@ class SkillExtractionService:
         try:
             logger.info(f"Extracting top {top_k} skills from text (length: {len(text)} chars)")
 
-            # Extract skills using LAiSER
-            skills = self.extractor.get_top_esco_skills(text, top_k=top_k)
+            # Create DataFrame for LAiSER extractor
+            data = pd.DataFrame({
+                'id': ['badge_1'],
+                'description': [text]
+            })
 
-            logger.info(f"Successfully extracted {len(skills)} skills")
-            return skills
+            # Use LAiSER's full extractor function
+            # With use_gpu=False: Uses SkillNer (fast pattern matching)
+            # With use_gpu=True: Uses LLM for enrichment (Knowledge Required, Task Abilities)
+            result_df = self.extractor.extractor(
+                data=data,
+                id_column='id',
+                text_columns=['description'],
+                input_type='job_desc',
+                top_k=top_k,
+                levels=False,
+                warnings=False
+            )
+
+            # Convert to list of dicts
+            if isinstance(result_df, pd.DataFrame):
+                skills = list(result_df.to_dict('records'))  # type: ignore
+            else:
+                skills = list(result_df) if isinstance(result_df, list) else []
+
+            logger.info(f"Successfully extracted {len(skills)} skills with ESCO taxonomy codes")
+            from typing import cast
+            return cast(List[Dict[str, Any]], skills)
 
         except Exception as e:
             logger.error(f"Skill extraction failed: {e}", exc_info=True)
