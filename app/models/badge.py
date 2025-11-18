@@ -12,5 +12,4 @@ class BadgeResponse(BaseModel):
     imageConfig: Optional[Dict[str, Any]] = None
     badge_id: str
     metrics: Optional[Dict[str, Any]] = None
-    skills: Optional[List[Dict[str, Any]]] = None
 

@@ -11,7 +11,8 @@ class BadgeRequest(BaseModel):
     institution: Optional[str] = Field(default=None, description="Issuing institution name")
     institute_url: Optional[str] = Field(default=None, description="URL of the issuing institution")
     context_length: Optional[int] = Field(default=None, description="Context length override (tokens)")
-    enable_skill_extraction: bool = Field(default=False, description="Enable LAiSER skill extraction for this request")
+    enable_skill_extraction: bool = Field(default=True, description="Enable skill extraction for this request")
+    skill_extraction_method: Literal["LAiSER_ESCO", "LAiSER_SLM"] = Field(default="LAiSER_ESCO", description="Skill extraction method: 'LAiSER_ESCO' (FAISS similarity - fast) or 'LAiSER_SLM' (SLM - context-aware)")
 
 class RegenerationRequest(BaseModel):
     course_input: str = Field(..., description="Original course content")

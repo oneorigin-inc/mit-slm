@@ -18,7 +18,7 @@ class Settings(BaseSettings):
         "top_p": 0.9,
         "top_k": 25,
         "num_predict": 1024,
-        "repeat_penalty": 1.05,
+        "repeat_penalty": 1.12,
         "num_ctx": 6144,
         "stop": ["<|end|>", "}\n\n"]
     }

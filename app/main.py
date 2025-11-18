@@ -27,6 +27,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"LAiSER initialization failed: {e}. Skill extraction will be unavailable for all requests.")
 
+    # Initialize ESCO skill index with FAISS
+    try:
+        logger.info("Initializing ESCO skill index with FAISS...")
+        skill_service.initialize_esco_index()
+        logger.info("ESCO skill index initialization complete.")
+    except Exception as e:
+        logger.warning(f"ESCO skill index initialization failed: {e}. ESCO-based skill extraction will be unavailable.")
+
     yield
     # Shutdown (if needed)
 

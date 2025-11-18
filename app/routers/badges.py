@@ -101,43 +101,72 @@ async def generate_badge(request: BadgeRequest):
         # Extract metrics
         metrics = badge_json.get("metrics", {})
 
+        # Extract skills if enabled in request (before creating BadgeResponse)
+        extracted_skills = []
+        if request.enable_skill_extraction:
+            try:
+                # LAiSER_ESCO: FAISS similarity-based extraction (fast)
+                if request.skill_extraction_method == "LAiSER_ESCO":
+                    if skill_service.is_esco_ready():
+                        esco_skills = skill_service.extract_skills_with_esco(
+                            text=request.course_input,
+                            top_k=settings.LAISER_TOP_K
+                        )
+                        # Mark skills with their extraction method
+                        for skill in esco_skills:
+                            skill["extraction_method"] = "LAiSER_ESCO"
+                        extracted_skills.extend(esco_skills)
+                        logger.info(f"Extracted {len(esco_skills)} LAiSER_ESCO skills (FAISS) for badge {badge_id}")
+                    else:
+                        logger.warning("LAiSER_ESCO extraction requested but service not ready")
+
+                # LAiSER_SLM: SLM-based extraction (context-aware)
+                elif request.skill_extraction_method == "LAiSER_SLM":
+                    if skill_service.is_ready():
+                        laiser_skills = skill_service.extract_skills(
+                            text=request.course_input,
+                            top_k=settings.LAISER_TOP_K
+                        )
+                        # Mark skills with their extraction method
+                        for skill in laiser_skills:
+                            skill["extraction_method"] = "LAiSER_SLM"
+                        extracted_skills.extend(laiser_skills)
+                        logger.info(f"Extracted {len(laiser_skills)} LAiSER_SLM skills (SLM) for badge {badge_id}")
+                    else:
+                        logger.warning("LAiSER_SLM extraction requested but service not ready")
+
+                logger.info(f"Extracted {len(extracted_skills)} skills using method: {request.skill_extraction_method}")
+
+            except Exception as e:
+                logger.warning(f"Skill extraction failed for badge {badge_id}: {e}")
+                extracted_skills = []
+        else:
+            logger.debug("Skill extraction disabled")
+
+        # Build achievement object with skills included
+        achievement = {
+            "criteria": validated.criteria,  # This is already {"narrative": "string"} format
+            "description": validated.badge_description,
+            "image": {
+                "id": f"https://example.com/achievements/badge_{badge_id}/image",
+                "image_base64": image_base64
+            },
+            "name": validated.badge_name
+        }
+
+        # Add skills to achievement if any were extracted
+        if extracted_skills:
+            achievement["skills"] = extracted_skills
+
         # Transform to new JSON schema format
         result = BadgeResponse(
             credentialSubject={
-                "achievement": {
-                    "criteria": validated.criteria,  # This is already {"narrative": "string"} format
-                    "description": validated.badge_description,
-                    "image": {
-                        "id": f"https://example.com/achievements/badge_{badge_id}/image",
-                        "image_base64": image_base64
-                    },
-                    "name": validated.badge_name
-                }
+                "achievement": achievement
             },
             imageConfig=image_config,
             badge_id=badge_id,
             metrics=metrics
         )
-
-        # Extract skills using LAiSER if enabled in request
-        if request.enable_skill_extraction and skill_service.is_ready():
-            try:
-                # Combine course input and badge description for comprehensive skill extraction
-                skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
-
-                extracted_skills = skill_service.extract_skills(
-                    text=skill_extraction_text,
-                    top_k=settings.LAISER_TOP_K
-                )
-
-                result.skills = extracted_skills
-                logger.info(f"Extracted {len(extracted_skills)} skills for badge {badge_id}")
-
-            except Exception as e:
-                logger.warning(f"Skill extraction failed for badge {badge_id}: {e}")
-                result.skills = []
-        else:
-            logger.debug("Skill extraction disabled or service not ready")
 
         # Store in history with the full result for editing capability
         history_entry = {
@@ -582,42 +611,71 @@ Parameters:
                             except Exception:
                                 pass
 
+                            # Extract skills if enabled in request (before creating BadgeResponse)
+                            extracted_skills = []
+                            if request.enable_skill_extraction:
+                                try:
+                                    # LAiSER_ESCO: FAISS similarity-based extraction (fast)
+                                    if request.skill_extraction_method == "LAiSER_ESCO":
+                                        if skill_service.is_esco_ready():
+                                            esco_skills = skill_service.extract_skills_with_esco(
+                                                text=request.course_input,
+                                                top_k=settings.LAISER_TOP_K
+                                            )
+                                            # Mark skills with their extraction method
+                                            for skill in esco_skills:
+                                                skill["extraction_method"] = "LAiSER_ESCO"
+                                            extracted_skills.extend(esco_skills)
+                                            logger.info(f"Extracted {len(esco_skills)} LAiSER_ESCO skills (FAISS) for streaming badge {badge_id}")
+                                        else:
+                                            logger.warning("LAiSER_ESCO extraction requested but service not ready (streaming)")
+
+                                    # LAiSER_SLM: SLM-based extraction (context-aware)
+                                    elif request.skill_extraction_method == "LAiSER_SLM":
+                                        if skill_service.is_ready():
+                                            laiser_skills = skill_service.extract_skills(
+                                                text=request.course_input,
+                                                top_k=settings.LAISER_TOP_K
+                                            )
+                                            # Mark skills with their extraction method
+                                            for skill in laiser_skills:
+                                                skill["extraction_method"] = "LAiSER_SLM"
+                                            extracted_skills.extend(laiser_skills)
+                                            logger.info(f"Extracted {len(laiser_skills)} LAiSER_SLM skills (SLM) for streaming badge {badge_id}")
+                                        else:
+                                            logger.warning("LAiSER_SLM extraction requested but service not ready (streaming)")
+
+                                    logger.info(f"Extracted {len(extracted_skills)} skills using method: {request.skill_extraction_method} (streaming)")
+
+                                except Exception as e:
+                                    logger.warning(f"Skill extraction failed for streaming badge {badge_id}: {e}")
+                                    extracted_skills = []
+                            else:
+                                logger.debug("Skill extraction disabled (streaming)")
+
+                            # Build achievement object with skills included
+                            achievement = {
+                                "criteria": validated.criteria,
+                                "description": validated.badge_description,
+                                "image": {
+                                    "id": f"https://example.com/achievements/badge_{badge_id}/image",
+                                    "image_base64": image_base64
+                                },
+                                "name": validated.badge_name
+                            }
+
+                            # Add skills to achievement if any were extracted
+                            if extracted_skills:
+                                achievement["skills"] = extracted_skills
+
                             # Transform to new JSON schema format
                             result = BadgeResponse(
                                 credentialSubject={
-                                    "achievement": {
-                                        "criteria": validated.criteria,
-                                        "description": validated.badge_description,
-                                        "image": {
-                                            "id": f"https://example.com/achievements/badge_{badge_id}/image",
-                                            "image_base64": image_base64
-                                        },
-                                        "name": validated.badge_name
-                                    }
+                                    "achievement": achievement
                                 },
                                 imageConfig=image_config,
                                 badge_id=badge_id
                             )
-
-                            # Extract skills using LAiSER if enabled in request
-                            if request.enable_skill_extraction and skill_service.is_ready():
-                                try:
-                                    # Combine course input and badge description for comprehensive skill extraction
-                                    skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
-
-                                    extracted_skills = skill_service.extract_skills(
-                                        text=skill_extraction_text,
-                                        top_k=settings.LAISER_TOP_K
-                                    )
-
-                                    result.skills = extracted_skills
-                                    logger.info(f"Extracted {len(extracted_skills)} skills for streaming badge {badge_id}")
-
-                                except Exception as e:
-                                    logger.warning(f"Skill extraction failed for streaming badge {badge_id}: {e}")
-                                    result.skills = []
-                            else:
-                                logger.debug("Skill extraction disabled or service not ready (streaming)")
 
                             # Store in history
                             history_entry = {
@@ -664,22 +722,65 @@ Parameters:
                                 
                             except Exception as dict_error:
                                 logger.error(f"Error converting result to dict: {dict_error}")
-                                # Fallback: create a simple response
+
+                                # Extract skills for fallback result if enabled
+                                fallback_skills = []
+                                if request.enable_skill_extraction:
+                                    try:
+                                        # LAiSER_ESCO: FAISS similarity-based extraction (fast)
+                                        if request.skill_extraction_method == "LAiSER_ESCO":
+                                            if skill_service.is_esco_ready():
+                                                esco_skills = skill_service.extract_skills_with_esco(
+                                                    text=request.course_input,
+                                                    top_k=settings.LAISER_TOP_K
+                                                )
+                                                for skill in esco_skills:
+                                                    skill["extraction_method"] = "LAiSER_ESCO"
+                                                fallback_skills.extend(esco_skills)
+                                                logger.info(f"Extracted {len(esco_skills)} LAiSER_ESCO skills for fallback badge {badge_id}")
+
+                                        # LAiSER_SLM: SLM-based extraction (context-aware)
+                                        elif request.skill_extraction_method == "LAiSER_SLM":
+                                            if skill_service.is_ready():
+                                                laiser_skills = skill_service.extract_skills(
+                                                    text=request.course_input,
+                                                    top_k=settings.LAISER_TOP_K
+                                                )
+                                                for skill in laiser_skills:
+                                                    skill["extraction_method"] = "LAiSER_SLM"
+                                                fallback_skills.extend(laiser_skills)
+                                                logger.info(f"Extracted {len(laiser_skills)} LAiSER_SLM skills for fallback badge {badge_id}")
+
+                                        logger.info(f"Extracted {len(fallback_skills)} skills for fallback result")
+
+                                    except Exception as skill_error:
+                                        logger.warning(f"Skill extraction failed for fallback badge {badge_id}: {skill_error}")
+                                        fallback_skills = []
+
+                                # Build fallback achievement object with skills
+                                fallback_achievement = {
+                                    "criteria": validated.criteria,
+                                    "description": validated.badge_description,
+                                    "image": {
+                                        "id": f"https://example.com/achievements/badge_{badge_id}/image",
+                                        "image_base64": None
+                                    },
+                                    "name": validated.badge_name
+                                }
+
+                                # Add skills to fallback achievement if any were extracted
+                                if fallback_skills:
+                                    fallback_achievement["skills"] = fallback_skills
+
+                                # Create fallback response
                                 fallback_result = {
                                     "credentialSubject": {
-                                        "achievement": {
-                                            "criteria": validated.criteria,
-                                            "description": validated.badge_description,
-                                            "image": {
-                                                "id": f"https://example.com/achievements/badge_{badge_id}/image",
-                                                "image_base64": None
-                                            },
-                                            "name": validated.badge_name
-                                        }
+                                        "achievement": fallback_achievement
                                     },
-                                    "badge_id": badge_id
+                                    "badge_id": badge_id,
+                                    "skills": fallback_skills if fallback_skills else None  # Also keep at root level
                                 }
-                                
+
                                 final_chunk = {
                                     "type": "final",
                                     "content": fallback_result,
@@ -1281,58 +1382,80 @@ async def regenerate_field(request: FieldRegenerateRequest):
 
 
 @router.post("/extract-skills/{badge_id}")
-async def extract_skills_for_badge(badge_id: str, top_k: int = 10):
+async def extract_skills_for_badge(
+    badge_id: str,
+    top_k: int = 10,
+    method: str = "LAiSER_ESCO"
+):
     """
-    Extract skills for an existing badge using LAiSER
+    Extract skills for an existing badge using LAiSER_ESCO (default) or LAiSER_SLM
 
     Args:
         badge_id: ID of the badge to extract skills from
         top_k: Number of top skills to extract (default: 10)
+        method: Skill extraction method - 'LAiSER_ESCO' (FAISS similarity - default) or 'LAiSER_SLM' (SLM)
 
     Returns:
         JSON with extracted skills and metadata
     """
     try:
-        # Check if LAiSER is enabled - Note: This endpoint always requires skill extraction
-        # For badge generation endpoints, use enable_skill_extraction in request body instead
-
-        # Check if skill service is ready
-        if not skill_service.is_ready():
-            raise HTTPException(
-                status_code=503,
-                detail="Skill extractor is not initialized. Check server logs for initialization errors."
-            )
-
         # Find badge in history
         badge_entry = get_badge_from_history(badge_id)
 
-        # Extract badge data
-        result = badge_entry.get("result", {})
-        if hasattr(result, 'dict'):
-            result_dict = result.dict()
-        elif hasattr(result, '__dict__'):
-            result_dict = result.__dict__
-        else:
-            result_dict = result
-
-        achievement = result_dict.get("credentialSubject", {}).get("achievement", {})
-
-        # Combine course input and badge data for skill extraction
+        # Extract course input
         course_input = badge_entry.get("course_input", "")
-        badge_name = achievement.get("name", "")
-        badge_description = achievement.get("description", "")
 
-        skill_extraction_text = f"{course_input}\n\nBadge: {badge_name}\n{badge_description}"
+        if not course_input:
+            raise HTTPException(
+                status_code=400,
+                detail="No course input found for this badge"
+            )
 
-        # Extract skills
-        logger.info(f"Extracting {top_k} skills for badge {badge_id}")
-        skills = skill_service.extract_skills(skill_extraction_text, top_k=top_k)
+        # Extract skills based on method
+        extracted_skills = []
+
+        # LAiSER_ESCO: FAISS similarity-based extraction (fast)
+        if method == "LAiSER_ESCO":
+            if not skill_service.is_esco_ready():
+                raise HTTPException(
+                    status_code=503,
+                    detail="LAiSER_ESCO skill extractor is not initialized. Check server logs for initialization errors."
+                )
+            esco_skills = skill_service.extract_skills_with_esco(
+                text=course_input,
+                top_k=top_k
+            )
+            # Mark skills with their extraction method
+            for skill in esco_skills:
+                skill["extraction_method"] = "LAiSER_ESCO"
+            extracted_skills.extend(esco_skills)
+            logger.info(f"Extracted {len(esco_skills)} LAiSER_ESCO skills (FAISS) for badge {badge_id}")
+
+        # LAiSER_SLM: SLM-based extraction (context-aware)
+        elif method == "LAiSER_SLM":
+            if not skill_service.is_ready():
+                raise HTTPException(
+                    status_code=503,
+                    detail="LAiSER_SLM skill extractor is not initialized. Check server logs for initialization errors."
+                )
+            laiser_skills = skill_service.extract_skills(
+                text=course_input,
+                top_k=top_k
+            )
+            # Mark skills with their extraction method
+            for skill in laiser_skills:
+                skill["extraction_method"] = "LAiSER_SLM"
+            extracted_skills.extend(laiser_skills)
+            logger.info(f"Extracted {len(laiser_skills)} LAiSER_SLM skills (SLM) for badge {badge_id}")
+
+        skills = extracted_skills
 
         return {
             "badge_id": badge_id,
             "skills": skills,
             "count": len(skills),
-            "message": f"Successfully extracted {len(skills)} skills"
+            "method": method,
+            "message": f"Successfully extracted {len(skills)} skills using {method} method"
         }
 
     except HTTPException:
