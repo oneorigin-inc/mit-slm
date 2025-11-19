@@ -1,8 +1,9 @@
 import logging
 import ssl
 import pandas as pd
+import pandas as pd
 from typing import List, Dict, Any, Optional
-from laiser.skill_extractor import Skill_Extractor
+from laiser.skill_extractor_refactored import SkillExtractorRefactored
 
 # Fix SSL certificate verification issues on macOS
 # NOTE: This disables SSL verification - use only for trusted sources like GitHub
@@ -14,7 +15,7 @@ class SkillExtractionService:
     """Service for extracting skills using LAiSER"""
 
     def __init__(self):
-        self.extractor: Optional[Skill_Extractor] = None
+        self.extractor: Optional[SkillExtractorRefactored] = None
         self._initialized: bool = False
 
     async def initialize(self, ai_model_id: str, hf_token: str, use_gpu: bool = True):
@@ -30,9 +31,9 @@ class SkillExtractionService:
             logger.info("Initializing LAiSER Skill Extractor...")
             logger.info(f"Model: {ai_model_id}, GPU: {use_gpu}")
 
-            self.extractor = Skill_Extractor(
-                AI_MODEL_ID=ai_model_id,
-                HF_TOKEN=hf_token,
+            self.extractor = SkillExtractorRefactored(
+                model_id=ai_model_id,
+                hf_token=hf_token,
                 use_gpu=use_gpu
             )
 
@@ -77,10 +78,10 @@ class SkillExtractionService:
                 'description': [text]
             })
 
-            # Use LAiSER's full extractor function
-            # With use_gpu=False: Uses SkillNer (fast pattern matching)
+            # Use LAiSER's refactored extract_and_align function
+            # With use_gpu=False: Uses CPU-based extraction
             # With use_gpu=True: Uses LLM for enrichment (Knowledge Required, Task Abilities)
-            result_df = self.extractor.extractor(
+            result_df = self.extractor.extract_and_align(
                 data=data,
                 id_column='id',
                 text_columns=['description'],
