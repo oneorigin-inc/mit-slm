@@ -5,10 +5,13 @@ on:
     branches:
       - main
 
-  pull_request:
-    branches:
-      - main
-    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'main'
+        type: string
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
@@ -27,6 +30,8 @@ jobs:
       # Step 1: Checkout Code
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
 
       # Step 2: Configure AWS Credentials
       - name: Configure AWS credentials
@@ -47,12 +52,17 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
+          BRANCH_NAME: ${{ github.event.inputs.branch || github.ref_name }}
         run: |
           echo "Building Docker image for linux/amd64..."
+          echo "Branch: $BRANCH_NAME"
+          # Sanitize branch name for Docker tag (replace / with -)
+          SAFE_BRANCH=$(echo "$BRANCH_NAME" | sed 's/\//-/g')
           docker buildx build \
             --platform linux/amd64 \
             -f Dockerfile \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$SAFE_BRANCH-latest \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
             --load \
             .
@@ -63,9 +73,14 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
+          BRANCH_NAME: ${{ github.event.inputs.branch || github.ref_name }}
         run: |
           echo "Pushing image with commit SHA tag..."
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          # Sanitize branch name for Docker tag (replace / with -)
+          SAFE_BRANCH=$(echo "$BRANCH_NAME" | sed 's/\//-/g')
+          echo "Pushing image with branch-specific tag: $SAFE_BRANCH-latest..."
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$SAFE_BRANCH-latest
           echo "Pushing image with latest tag..."
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
@@ -98,5 +113,6 @@ jobs:
       - name: Deployment complete
         run: |
           echo "✅ Deployment completed successfully!"
+          echo "Branch: ${{ github.event.inputs.branch || github.ref_name }}"
           echo "New task definition revision deployed to ${{ env.ECS_SERVICE }}"
           echo "Image: ${{ steps.build-image.outputs.image }}"
