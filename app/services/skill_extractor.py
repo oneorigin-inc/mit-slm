@@ -96,9 +96,38 @@ class SkillExtractionService:
             else:
                 skills = list(result_df) if isinstance(result_df, list) else []
 
-            logger.info(f"Successfully extracted {len(skills)} skills with ESCO taxonomy codes")
+            # Enrich skills with ESCO description and URI
+            enriched_skills = []
+            for skill in skills:
+                # Remove Research ID 
+                skill.pop('Research ID', None)
+
+                raw_skill = skill.get('Raw Skill', '')
+                if raw_skill and self.extractor.esco_df is not None:
+                    # Find matching ESCO entry
+                    esco_match = self.extractor.esco_df[
+                        self.extractor.esco_df['preferredLabel'] == raw_skill
+                    ]
+                    if not esco_match.empty:
+                        esco_row = esco_match.iloc[0]
+                        # Replace Description with ESCO description (or empty if not found)
+                        skill['Description'] = esco_row.get('description', '')
+                        # Add ESCO URI
+                        skill['URI'] = esco_row.get('conceptUri', '')
+                    else:
+                        # No ESCO match - set description to empty
+                        skill['Description'] = ''
+                        skill['URI'] = ''
+                else:
+                    # No raw skill or esco_df not available
+                    skill['Description'] = ''
+                    skill['URI'] = ''
+
+                enriched_skills.append(skill)
+
+            logger.info(f"Successfully extracted {len(enriched_skills)} skills with ESCO metadata")
             from typing import cast
-            return cast(List[Dict[str, Any]], skills)
+            return cast(List[Dict[str, Any]], enriched_skills)
 
         except Exception as e:
             logger.error(f"Skill extraction failed: {e}", exc_info=True)
