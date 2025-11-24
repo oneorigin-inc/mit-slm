@@ -10,6 +10,10 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 logger = logging.getLogger(__name__)
 
+def to_title_case(text: str) -> str:
+    """Convert text to Title Case (e.g., 'machine learning' -> 'Machine Learning')"""
+    return text.title() if text else text
+
 class SkillExtractionService:
     """Service for extracting skills using LAiSER"""
 
@@ -99,10 +103,18 @@ class SkillExtractionService:
             # Enrich skills with ESCO description and URI
             enriched_skills = []
             for skill in skills:
-                # Remove Research ID 
+                # Remove Research ID
                 skill.pop('Research ID', None)
 
                 raw_skill = skill.get('Raw Skill', '')
+                # Convert Raw Skill to Title Case and rename to targetName
+                if raw_skill:
+                    skill['targetName'] = to_title_case(raw_skill)
+                else:
+                    skill['targetName'] = ''
+                # Remove old field name
+                skill.pop('Raw Skill', None)
+
                 if raw_skill and self.extractor.esco_df is not None:
                     # Find matching ESCO entry
                     esco_match = self.extractor.esco_df[
@@ -110,18 +122,26 @@ class SkillExtractionService:
                     ]
                     if not esco_match.empty:
                         esco_row = esco_match.iloc[0]
-                        # Replace Description with ESCO description (or empty if not found)
-                        skill['Description'] = esco_row.get('description', '')
-                        # Add ESCO URI
-                        skill['URI'] = esco_row.get('conceptUri', '')
+                        # Add ESCO description as targetDescription
+                        skill['targetDescription'] = esco_row.get('description', '')
+                        # Add ESCO URI as targetUrl
+                        skill['targetUrl'] = esco_row.get('conceptUri', '')
                     else:
-                        # No ESCO match - set description to empty
-                        skill['Description'] = ''
-                        skill['URI'] = ''
+                        # No ESCO match - set to empty
+                        skill['targetDescription'] = ''
+                        skill['targetUrl'] = ''
                 else:
                     # No raw skill or esco_df not available
-                    skill['Description'] = ''
-                    skill['URI'] = ''
+                    skill['targetDescription'] = ''
+                    skill['targetUrl'] = ''
+
+                # Remove old field names
+                skill.pop('Description', None)
+                skill.pop('URI', None)
+
+                # Add static fields
+                skill['type'] = 'Alignment'
+                skill['targetType'] = 'ESCO:Skill'
 
                 enriched_skills.append(skill)
 
