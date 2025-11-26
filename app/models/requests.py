@@ -10,6 +10,8 @@ class BadgeRequest(BaseModel):
     badge_level: str = Field(default="", description="Badge difficulty level")
     institution: Optional[str] = Field(default=None, description="Issuing institution name")
     institute_url: Optional[str] = Field(default=None, description="URL of the issuing institution")
+    context_length: Optional[int] = Field(default=None, description="Context length override (tokens)")
+    enable_skill_extraction: bool = Field(default=False, description="Enable LAiSER skill extraction for this request")
 
 class RegenerationRequest(BaseModel):
     course_input: str = Field(..., description="Original course content")
