@@ -10,8 +10,10 @@ on:
       branch:
         description: 'Branch to deploy'
         required: true
-        default: 'main'
-        type: string
+        type: choice
+        options:
+          - main
+          - develop
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
