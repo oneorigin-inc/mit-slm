@@ -1,4 +1,5 @@
-FROM ollama/ollama:latest
+#Build - Create the model
+FROM alpine/ollama:latest AS builder
 
 # Copy model files
 COPY models/ /models/
@@ -13,6 +14,12 @@ RUN ollama serve & \
     ollama create phi4-chat -f Modelfile && \
     kill $OLLAMA_PID && \
     wait $OLLAMA_PID || true
+
+#Only copy the created model (removes source GGUF duplication)
+FROM alpine/ollama:latest
+
+# Copy only Ollama's model storage from builder stage (NOT the source GGUF file)
+COPY --from=builder /root/.ollama /root/.ollama
 
 # Expose Ollama port
 EXPOSE 11434
