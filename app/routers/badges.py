@@ -461,8 +461,8 @@ Parameters:
                     if chunk.get("request_id") and not request_id:
                         request_id = chunk.get("request_id")
 
-                    if chunk.get("token_usage"):
-                        token_usage_data = chunk.get("token_usage")
+                    if chunk.get("metrics"):
+                        token_usage_data = chunk.get("metrics")
 
                     # Handle different chunk types
                     if chunk.get("type") == "token":
