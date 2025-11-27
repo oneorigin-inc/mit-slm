@@ -1,42 +1,138 @@
 
 from pydantic_settings import BaseSettings  # Changed from pydantic import BaseSettings
 from pydantic import Field
-from typing import Dict, List
-import os
+from typing import Dict, List, Optional
+
 
 class Settings(BaseSettings):
+    # LLM Provider Configuration
+    LLM_PROVIDER: str = Field(default="ollama")  # Options: "ollama", "llamacpp"
+
     # Ollama Configuration
-    OLLAMA_API_URL: str = os.getenv("OLLAMA_API_URL", "http://localhost:11434/api/generate")
-    MODEL_NAME: str = "phi4-chat:latest"
+    OLLAMA_API_URL: str = Field(default="http://localhost:11434/api/generate")
+    MODEL_NAME: str = Field(default="phi4-chat:latest")
+
+    # Llama-cpp Configuration
+    LLAMACPP_MODEL_SOURCE: str = Field(default="local")  # Options: "local", "huggingface"
+    LLAMACPP_MODEL_PATH: str = Field(default="")  # For local models
+    LLAMACPP_HF_REPO_ID: str = Field(default="")  # For HF models
+    LLAMACPP_HF_FILENAME: str = Field(default="")  # For HF models
+    LLAMACPP_HF_TOKEN: str = Field(default="")  # HuggingFace API token for private/gated repos
+    LLAMACPP_N_CTX: Optional[int] = Field(default=None)  # Context window override (uses MODEL_NUM_CTX if not set)
+    LLAMACPP_N_GPU_LAYERS: int = Field(default=0)  # GPU layers (0 = CPU only)
+    LLAMACPP_VERBOSE: bool = Field(default=False)
 
     # Badge Image Service Configuration
-    BADGE_IMAGE_SERVICE_URL: str = os.getenv("BADGE_IMAGE_SERVICE_URL", "http://localhost:3001")
+    BADGE_IMAGE_SERVICE_URL: str = Field(default="http://localhost:3001")
 
-    # Model Configuration
-    MODEL_CONFIG: Dict = {
-        "temperature": 0.10,
-        "top_p": 0.9,
-        "top_k": 25,
-        "num_predict": 1024,
-        "repeat_penalty": 1.05,
-        "num_ctx": 6144,
-        "stop": ["<|end|>", "}\n\n"]
-    }
+    # Unified Model Configuration (Shared across Ollama and llama-cpp)
+    # These can be overridden via environment variables
+    TEMPERATURE: float = Field(default=0.2, validation_alias="MODEL_TEMPERATURE")
+    TOP_P: float = Field(default=0.90, validation_alias="MODEL_TOP_P")
+    TOP_K: int = Field(default=50, validation_alias="MODEL_TOP_K")
+    NUM_PREDICT: int = Field(default=1024, validation_alias="MODEL_NUM_PREDICT")
+    REPEAT_PENALTY: float = Field(default=1.05, validation_alias="MODEL_REPEAT_PENALTY")
+    NUM_CTX: int = Field(default=6144, validation_alias="MODEL_NUM_CTX")
+    STOP_SEQUENCES_STR: str = Field(
+        default="<|end|>,}\n\n",
+        validation_alias="MODEL_STOP_SEQUENCES"
+    )
+
+    @property
+    def STOP_SEQUENCES(self) -> List[str]:
+        """Parse stop sequences from comma-separated string"""
+        return [s.strip() for s in self.STOP_SEQUENCES_STR.split(',')]
+
+    # Model Configuration Dict (for backward compatibility)
+    @property
+    def MODEL_CONFIG(self) -> Dict:
+        return {
+            "temperature": self.TEMPERATURE,
+            "top_p": self.TOP_P,
+            "top_k": self.TOP_K,
+            "num_predict": self.NUM_PREDICT,
+            "repeat_penalty": self.REPEAT_PENALTY,
+            "num_ctx": self.NUM_CTX,
+            "stop": self.STOP_SEQUENCES
+        }
     
+    # System Prompt for Badge Generation (used by llama-cpp models)
+    # Ollama uses Modelfile, llama-cpp uses this system prompt in chat format
+    BADGE_SYSTEM_PROMPT: str = """You are an expert educational badge generator specializing in Open Badges v3 standards.
+
+PROCESS:
+
+STEP 1: ANALYZE CONTENT
+- Read entire course content
+- Identify domain (academic/creative/technical/professional/vocational)
+- Extract: topics, skills, tools, outcomes, structure, issuer (if mentioned), level
+
+IMPORTANT: If this covers multiple courses or complex content, create a comprehensive badge name, description and criterion that encompasses all areas while maintaining focus and clarity.
+
+STEP 2: CONSTRUCT BADGE NAME
+- With issuer: `[Issuer] [Topic] [Credential Type]`
+- Without: `[Topic] [Credential Type]`
+- 3-8 words, accurate to content
+
+STEP 3: WRITE DESCRIPTION (3-4 sentences)
+- Overview of areas covered
+- Key competencies, tools, applications
+- Assessment rigor, value, credibility (if issuer provided)
+- Match tone to domain
+
+STEP 4: CREATE CRITERIA NARRATIVE (scale to content depth)
+- **Length:** 6-20+ sentences (adapt to course complexity: brief topics = 6-8 sentences, comprehensive courses = 15-20+ sentences)
+- **Opening:** "Recipients of [this/Issuer's] [Badge Name] have demonstrated competence in the following areas via [assessment type]:"
+- **Competency Details:**
+  * Bold headings: `**Module/Section Name**`
+  * Bullets: only use - "The learner [verb]..." OR paragraphs (based on content)
+  * Domain verbs: explains/analyzes (academic), performs/creates (creative), builds/codes (technical), leads/manages (professional)
+  * Organize by modules or skill categories
+- Include assessment methods if mentioned
+- Extract from provided content only
+
+STEP 5: VALIDATE & OUTPUT
+- Topic alignment? Issuer only if provided? Valid JSON?
+- Return ONLY JSON - no extra text
+
+---
+
+JSON SCHEMA:
+{
+  "badge_name": "string",
+  "badge_description": "string",
+  "criteria": {
+    "narrative": "string"
+  }
+}
+
+---
+
+RULES:
+1. Analyze domain first
+2. Extract only - never invent
+3. Match domain language
+4. No issuer assumptions
+5. Custom instructions override defaults
+6. Return ONLY valid JSON
+
+Content must be LinkedIn/CV suitable.
+"""
+
     # Asset paths
     ASSETS_PATH: str = "assets/"
     ICONS_PATH: str = "assets/icons/"
     LOGOS_PATH: str = "assets/logos/"
     FONTS_PATH: str = "assets/fonts/"
-    
+
     # NLTK Configuration
     NLTK_AVAILABLE: bool = True
 
     # LAiSER Skill Extraction Configuration
-    LAISER_MODEL_ID: str = os.getenv("LAISER_MODEL_ID", "bert-base-uncased")
-    LAISER_HF_TOKEN: str = os.getenv("LAISER_HF_TOKEN", "")
-    LAISER_USE_GPU: bool = os.getenv("LAISER_USE_GPU", "false").lower() == "true"
-    LAISER_TOP_K: int = int(os.getenv("LAISER_TOP_K", "10"))
+    LAISER_MODEL_ID: str = Field(default="bert-base-uncased")
+    LAISER_HF_TOKEN: str = Field(default="")
+    LAISER_USE_GPU: bool = Field(default=False)
+    LAISER_TOP_K: int = Field(default=10)
 
     # Style Descriptions
     STYLE_DESCRIPTIONS: Dict = {
@@ -72,6 +168,6 @@ class Settings(BaseSettings):
     
     }
 
-    model_config = {"env_file": ".env"}  # Updated for Pydantic v2
+    model_config = {"env_file": ".env", "extra": "allow"}  # Updated for Pydantic v2
 
 settings = Settings()

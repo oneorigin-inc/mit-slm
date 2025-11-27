@@ -4,7 +4,6 @@ from app.routers import badges, health
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.logging import setup_logging
 from app.core.config import settings
-from app.services.ollama_client import preload_model
 from app.services.skill_extractor import skill_service
 import logging
 
@@ -12,8 +11,20 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
-    await preload_model()
+    # Startup - preload the configured LLM model
+    try:
+        if settings.LLM_PROVIDER == "ollama":
+            from app.services.ollama_client import preload_model
+            logger.info("Preloading Ollama model...")
+            await preload_model()
+        elif settings.LLM_PROVIDER == "llamacpp":
+            from app.services.llama_cpp_client import preload_llamacpp_model
+            logger.info("Preloading llama-cpp model...")
+            await preload_llamacpp_model()
+        else:
+            logger.warning(f"Unknown LLM provider: {settings.LLM_PROVIDER}")
+    except Exception as e:
+        logger.error(f"Failed to preload model: {e}")
 
     # Initialize LAiSER skill extractor (available for per-request use)
     try:

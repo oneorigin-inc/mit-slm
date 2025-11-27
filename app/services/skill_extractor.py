@@ -1,9 +1,8 @@
 import logging
 import ssl
 import pandas as pd
-import pandas as pd
 from typing import List, Dict, Any, Optional
-from laiser.skill_extractor_refactored import SkillExtractorRefactored
+from laiser.skill_extractor import Skill_Extractor
 
 # Fix SSL certificate verification issues on macOS
 # NOTE: This disables SSL verification - use only for trusted sources like GitHub
@@ -11,11 +10,15 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 logger = logging.getLogger(__name__)
 
+def to_title_case(text: str) -> str:
+    """Convert text to Title Case (e.g., 'machine learning' -> 'Machine Learning')"""
+    return text.title() if text else text
+
 class SkillExtractionService:
     """Service for extracting skills using LAiSER"""
 
     def __init__(self):
-        self.extractor: Optional[SkillExtractorRefactored] = None
+        self.extractor: Optional[Skill_Extractor] = None
         self._initialized: bool = False
 
     async def initialize(self, ai_model_id: str, hf_token: str, use_gpu: bool = True):
@@ -31,9 +34,9 @@ class SkillExtractionService:
             logger.info("Initializing LAiSER Skill Extractor...")
             logger.info(f"Model: {ai_model_id}, GPU: {use_gpu}")
 
-            self.extractor = SkillExtractorRefactored(
-                model_id=ai_model_id,
-                hf_token=hf_token,
+            self.extractor = Skill_Extractor(
+                AI_MODEL_ID=ai_model_id,
+                HF_TOKEN=hf_token,
                 use_gpu=use_gpu
             )
 
@@ -78,10 +81,10 @@ class SkillExtractionService:
                 'description': [text]
             })
 
-            # Use LAiSER's refactored extract_and_align function
-            # With use_gpu=False: Uses CPU-based extraction
+            # Use LAiSER's full extractor function
+            # With use_gpu=False: Uses SkillNer (fast pattern matching)
             # With use_gpu=True: Uses LLM for enrichment (Knowledge Required, Task Abilities)
-            result_df = self.extractor.extract_and_align(
+            result_df = self.extractor.extractor(
                 data=data,
                 id_column='id',
                 text_columns=['description'],
@@ -97,9 +100,54 @@ class SkillExtractionService:
             else:
                 skills = list(result_df) if isinstance(result_df, list) else []
 
-            logger.info(f"Successfully extracted {len(skills)} skills with ESCO taxonomy codes")
+            # Enrich skills with ESCO description and URI
+            enriched_skills = []
+            for skill in skills:
+                # Remove Research ID
+                skill.pop('Research ID', None)
+
+                raw_skill = skill.get('Raw Skill', '')
+                # Convert Raw Skill to Title Case and rename to targetName
+                if raw_skill:
+                    skill['targetName'] = to_title_case(raw_skill)
+                else:
+                    skill['targetName'] = ''
+                # Remove old field name
+                skill.pop('Raw Skill', None)
+
+                if raw_skill and self.extractor.esco_df is not None:
+                    # Find matching ESCO entry
+                    esco_match = self.extractor.esco_df[
+                        self.extractor.esco_df['preferredLabel'] == raw_skill
+                    ]
+                    if not esco_match.empty:
+                        esco_row = esco_match.iloc[0]
+                        # Add ESCO description as targetDescription
+                        skill['targetDescription'] = esco_row.get('description', '')
+                        # Add ESCO URI as targetUrl
+                        skill['targetUrl'] = esco_row.get('conceptUri', '')
+                    else:
+                        # No ESCO match - set to empty
+                        skill['targetDescription'] = ''
+                        skill['targetUrl'] = ''
+                else:
+                    # No raw skill or esco_df not available
+                    skill['targetDescription'] = ''
+                    skill['targetUrl'] = ''
+
+                # Remove old field names
+                skill.pop('Description', None)
+                skill.pop('URI', None)
+
+                # Add static fields
+                skill['type'] = 'Alignment'
+                skill['targetType'] = 'ESCO:Skill'
+
+                enriched_skills.append(skill)
+
+            logger.info(f"Successfully extracted {len(enriched_skills)} skills with ESCO metadata")
             from typing import cast
-            return cast(List[Dict[str, Any]], skills)
+            return cast(List[Dict[str, Any]], enriched_skills)
 
         except Exception as e:
             logger.error(f"Skill extraction failed: {e}", exc_info=True)

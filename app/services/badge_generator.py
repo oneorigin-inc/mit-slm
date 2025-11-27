@@ -8,10 +8,24 @@ from fastapi import HTTPException
 
 from app.core.config import settings
 from app.models.badge import BadgeValidated
-from app.services.ollama_client import call_model_async, call_model_stream_async
+from app.services.ollama_client import ollama_client
+from app.services.llama_cpp_client import llamacpp_client
 from app.services.text_processor import process_course_input
 
 logger = logging.getLogger(__name__)
+
+
+def _get_llm_client(provider: str = None):
+    """Get the appropriate LLM client based on provider"""
+    provider = provider or settings.LLM_PROVIDER
+
+    if provider == "ollama":
+        return ollama_client
+    elif provider == "llamacpp":
+        return llamacpp_client
+    else:
+        raise ValueError(f"Invalid LLM provider: {provider}. Must be 'ollama' or 'llamacpp'")
+
 
 def get_random_parameters(user_request) -> Dict[str, str]:
     """Generate random parameters, but respect user-provided ones"""
@@ -119,8 +133,13 @@ Parameters:
 
     # Minimal prompt - Modelfile handles all the complex instructions
     prompt = user_content
-    
-    response, metrics = await call_model_async(prompt)
+
+    # Get the appropriate client based on provider
+    provider = getattr(request, 'llm_provider', None)
+    client = _get_llm_client(provider)
+
+    # Call the selected client
+    response, metrics = await client.generate(prompt, settings.MODEL_CONFIG)
     result = extract_json_from_response(response)
     
     # Add metrics to result
@@ -164,7 +183,9 @@ Return JSON:
     "achievement_phrase": ""
 }}"""
 
-    response, metrics = await call_model_async(prompt)
+    # Use default provider for optimization
+    client = _get_llm_client()
+    response, metrics = await client.generate(prompt, settings.MODEL_CONFIG)
     result = extract_json_from_response(response)
     result['metrics'] = metrics
     return result
@@ -204,17 +225,20 @@ OUTPUT FORMAT: Return ONLY valid JSON in this exact format:
 
 Generate badge metadata now:"""
 
-    # Stream the response using the new ollama service
-    from app.services.ollama_client import ollama_client
-    
+    # Get the appropriate client based on provider
     accumulated_text = ""
-    async for chunk in ollama_client.generate_stream(
+    provider = getattr(request, 'llm_provider', None)  # Get provider from request if available
+    client = _get_llm_client(provider)
+
+    # Stream the response using the selected LLM client
+    async for chunk in client.generate_stream(
         content=prompt,
         temperature=settings.MODEL_CONFIG.get("temperature", 0.15),
         max_tokens=settings.MODEL_CONFIG.get("num_predict", 400),
         top_p=settings.MODEL_CONFIG.get("top_p", 0.8),
         top_k=settings.MODEL_CONFIG.get("top_k", 30),
-        repeat_penalty=settings.MODEL_CONFIG.get("repeat_penalty", 1.05)
+        repeat_penalty=settings.MODEL_CONFIG.get("repeat_penalty", 1.05),
+        context_length=None
     ):
         if chunk.get("type") == "token":
             accumulated_text += chunk.get("content", "")

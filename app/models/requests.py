@@ -12,6 +12,7 @@ class BadgeRequest(BaseModel):
     institute_url: Optional[str] = Field(default=None, description="URL of the issuing institution")
     context_length: Optional[int] = Field(default=None, description="Context length override (tokens)")
     enable_skill_extraction: bool = Field(default=False, description="Enable LAiSER skill extraction for this request")
+    llm_provider: Optional[Literal["ollama", "llamacpp"]] = Field(default=None, description="LLM provider to use (ollama or llamacpp). If not specified, uses default from config.")
 
 class RegenerationRequest(BaseModel):
     course_input: str = Field(..., description="Original course content")

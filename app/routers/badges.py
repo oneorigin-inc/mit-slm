@@ -432,30 +432,43 @@ Parameters:
 
         # Minimal prompt - Modelfile handles all complex instructions
         prompt = user_content
-        
-        
-         # Import ollama service
+
+        # Import provider clients directly
         from app.services.ollama_client import ollama_client
+        from app.services.llama_cpp_client import llamacpp_client
         MODEL_CONFIG = settings.MODEL_CONFIG
 
         # Get user provided context length or fallback to config default
         context_length = getattr(request, "context_length", None) or MODEL_CONFIG.get("num_ctx", 2048)
-        
+
+        # Determine which provider to use (request override or default from settings)
+        provider = getattr(request, "llm_provider", None) or settings.LLM_PROVIDER
+
+        # Select the appropriate client
+        if provider == "ollama":
+            client = ollama_client
+        elif provider == "llamacpp":
+            client = llamacpp_client
+        else:
+            raise ValueError(f"Invalid LLM provider: {provider}. Must be 'ollama' or 'llamacpp'")
+
+        logger.info(f"Using LLM provider: {provider}")
+
         async def generate_stream_response():
             nonlocal request_id
             accumulated_text = ""
             token_usage_data = None  # Track token usage
-            
+
             try:
-                # Call the service layer for streaming generation
-                async for chunk in ollama_client.generate_stream(
+                # Call the selected client for streaming generation
+                async for chunk in client.generate_stream(
                     content=prompt,
                     temperature=MODEL_CONFIG.get("temperature", 0.2),
                     max_tokens=MODEL_CONFIG.get("num_predict", 1024),
                     top_p=MODEL_CONFIG.get("top_p", 0.8),
                     top_k=MODEL_CONFIG.get("top_k", 30),
                     repeat_penalty=MODEL_CONFIG.get("repeat_penalty", 1.05),
-                    context_length=context_length  # pass user context length
+                    context_length=context_length
                 ):
                     # Track request ID for logging
                     if chunk.get("request_id") and not request_id:
@@ -1163,20 +1176,35 @@ async def regenerate_field(request: FieldRegenerateRequest):
             custom_instructions=request.custom_instructions
         )
 
-        # Import ollama service
+        # Import provider clients directly
         from app.services.ollama_client import ollama_client
+        from app.services.llama_cpp_client import llamacpp_client
         MODEL_CONFIG = settings.MODEL_CONFIG
 
-        # Generate new field value
+        # Determine which provider to use
+        provider = settings.LLM_PROVIDER
+
+        # Select the appropriate client
+        if provider == "ollama":
+            client = ollama_client
+        elif provider == "llamacpp":
+            client = llamacpp_client
+        else:
+            raise ValueError(f"Invalid LLM provider: {provider}. Must be 'ollama' or 'llamacpp'")
+
+        logger.info(f"Using LLM provider: {provider}")
+
+        # Generate new field value using the selected client
         new_value = ""
         metrics = {}
-        async for chunk in ollama_client.generate_stream(
+        async for chunk in client.generate_stream(
             content=prompt,
             temperature=MODEL_CONFIG.get("temperature", 0.15),
             max_tokens=200,  # Smaller for single field
             top_p=MODEL_CONFIG.get("top_p", 0.8),
             top_k=MODEL_CONFIG.get("top_k", 30),
-            repeat_penalty=MODEL_CONFIG.get("repeat_penalty", 1.05)
+            repeat_penalty=MODEL_CONFIG.get("repeat_penalty", 1.05),
+            context_length=None
         ):
             if chunk.get("type") == "token":
                 new_value += chunk.get("content", "")

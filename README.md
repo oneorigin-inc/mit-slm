@@ -382,6 +382,46 @@ docker compose up -d
 
 ***
 
+## Using HuggingFace Models with llama-cpp (Direct Loading)
+
+For direct llama-cpp integration without Ollama, you can load GGUF models directly from HuggingFace:
+
+### 1. Login to HuggingFace (First Time)
+
+```bash
+pip install huggingface_hub
+huggingface-cli login
+```
+Enter your HuggingFace token when prompted. Get one at: https://huggingface.co/settings/tokens
+
+### 2. Configure `.env` for HuggingFace Model
+
+```bash
+# Set llama-cpp as provider
+LLM_PROVIDER=llamacpp
+
+# Configure HuggingFace model loading
+LLAMACPP_MODEL_SOURCE=huggingface
+LLAMACPP_HF_REPO_ID=unsloth/Llama-3.2-3B-Instruct-GGUF
+LLAMACPP_HF_FILENAME=Llama-3.2-3B-Instruct-Q4_K_M.gguf
+LLAMACPP_HF_TOKEN=hf_xxxxxxxxxxxxx  # Required for private/gated repos
+```
+
+### 3. Start the Server
+
+```bash
+python -m uvicorn app.main:app --reload --port 8000
+```
+
+The model will be automatically downloaded and cached on first run.
+
+**Notes:**
+- Models are cached in `~/.cache/huggingface/hub/`
+- Context length is set at model load time (cannot change per-request)
+- Use `LLAMACPP_N_GPU_LAYERS=-1` for full GPU offload (if available)
+
+***
+
 ## Model Configuration
 
 ### Updating the Modelfile
