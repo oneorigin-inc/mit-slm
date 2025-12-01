@@ -1,8 +1,16 @@
 import logging
 import ssl
 import pandas as pd
-from typing import List, Dict, Any, Optional
-from laiser.skill_extractor import Skill_Extractor
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
+
+# Optional LAiSER import - only available if installed
+try:
+    from laiser.skill_extractor import Skill_Extractor
+    LAISER_AVAILABLE = True
+except ImportError:
+    LAISER_AVAILABLE = False
+    if TYPE_CHECKING:
+        from laiser.skill_extractor import Skill_Extractor
 
 # Fix SSL certificate verification issues on macOS
 # NOTE: This disables SSL verification - use only for trusted sources like GitHub
@@ -30,6 +38,11 @@ class SkillExtractionService:
             hf_token: HuggingFace API token
             use_gpu: Whether to use GPU acceleration
         """
+        if not LAISER_AVAILABLE:
+            logger.warning("LAiSER not installed - skill extraction features will be disabled")
+            self._initialized = False
+            return
+
         try:
             logger.info("Initializing LAiSER Skill Extractor...")
             logger.info(f"Model: {ai_model_id}, GPU: {use_gpu}")

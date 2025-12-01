@@ -1,0 +1,36 @@
+services:
+  badge-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.llamacpp
+    image: badge-api-llamacpp
+    container_name: badge-api-llamacpp
+    ports:
+      - "8001:8000"
+    volumes:
+      # Mount models directory to allow easy model swapping
+      - ./models:/app/models
+      # Mount assets directory
+      - ./assets:/app/assets
+      # Optionally mount .env for runtime config changes (comment out if baked into image)
+      - ./.env:/app/.env
+    environment:
+      # Override environment variables if needed
+      - LLM_PROVIDER=llamacpp
+      - LLAMACPP_MODEL_SOURCE=local
+      - LLAMACPP_MODEL_PATH=models/Phi-4-mini-instruct_Q4_K_M.gguf
+      # GPU acceleration (set to number of layers to offload to GPU, 0 = CPU only)
+      - LLAMACPP_N_GPU_LAYERS=0
+      # Context window size (optional override)
+      - LLAMACPP_N_CTX=4096
+      # Badge image service URL (use host.docker.internal to reach host services)
+      - BADGE_IMAGE_SERVICE_URL=http://host.docker.internal:3001
+    restart: unless-stopped
+    # Uncomment below to enable GPU support (requires nvidia-docker/NVIDIA Container Runtime)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
