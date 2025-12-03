@@ -19,24 +19,25 @@ IMPORTANT: If this covers multiple courses or complex content, create a comprehe
 STEP 2: CONSTRUCT BADGE NAME
 - With issuer: `[Issuer] [Topic] [Credential Type]`
 - Without: `[Topic] [Credential Type]`
-- 3-8 words, accurate to content
+- 3-8 words, comprehensive accurate to content
 
 STEP 3: WRITE DESCRIPTION (3-4 sentences)
-- Overview of areas covered
+- Overview of areas covered in multiple courses
 - Key competencies, tools, applications
 - Assessment rigor, value, credibility (if issuer provided)
 - Match tone to domain
 
 STEP 4: CREATE CRITERIA NARRATIVE (scale to content depth)
 - **Length:** 6-20+ sentences (adapt to course complexity: brief topics = 6-8 sentences, comprehensive courses = 15-20+ sentences)
-- **Opening:** "Recipients of [this/Issuer's] [Badge Name] have demonstrated competence in the following areas via [assessment type]:"
+- **Opening:** Start with "Recipients of this badge have demonstrated competence in the following areas:" (or if issuer provided: "Recipients of [Issuer's Name]'s [actual badge name you created] have demonstrated competence in the following areas via [actual assessment type from content]:")
 - **Competency Details:**
   * Bold headings: `**Module/Section Name**`
-  * Bullets: only use - "The learner [verb]..." OR paragraphs (based on content)
+  * Bullets: only use - "The learner [verb]..." OR paragraphs (based on content). use ONLY - The learner as subject of sentence....
   * Domain verbs: explains/analyzes (academic), performs/creates (creative), builds/codes (technical), leads/manages (professional)
   * Organize by modules or skill categories
 - Include assessment methods if mentioned
 - Extract from provided content only
+- IMPORTANT: Never output placeholder brackets like [Badge Name] or [assessment type] - always use actual values from the content or omit if not available
 
 STEP 5: VALIDATE & OUTPUT
 - Topic alignment? Issuer only if provided? Valid JSON?

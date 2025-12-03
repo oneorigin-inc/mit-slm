@@ -14,9 +14,9 @@ class Settings(BaseSettings):
 
     # Model Configuration
     MODEL_CONFIG: Dict = {
-        "temperature": 0.10,
-        "top_p": 0.9,
-        "top_k": 25,
+        "temperature": 0.15,
+        "top_p": 0.85,
+        "top_k": 50,
         "num_predict": 1024,
         "repeat_penalty": 1.05,
         "num_ctx": 6144,
@@ -67,8 +67,8 @@ class Settings(BaseSettings):
     
     CRITERION_TEMPLATES: Dict = {
        "Task-Oriented": "The learner explains, determines, analyzes, evaluates, applies... (simple present tense action verbs describing what learners demonstrate). Example: The learner determines the tax treatment for items reflected in individual income tax returns. Do NOT use 'Upon completion' prefixes.",
-    #     "Evidence-Based": "The Learner has/can/successfully [action verb], has/can/effectively [action verb], has/can/accurately [action verb]... (focusing on demonstrated abilities and accomplishments)",
-    #     "Outcome-Focused": "The Learner will be able to [action verb], will be prepared to [action verb], will [action verb]... (future tense emphasizing expected outcomes and capabilities)"
+        "Evidence-Based": "The Learner has/can/successfully [action verb], has/can/effectively [action verb], has/can/accurately [action verb]... (focusing on demonstrated abilities and accomplishments)",
+        "Outcome-Focused": "The Learner will be able to [action verb], will be prepared to [action verb], will [action verb]... (future tense emphasizing expected outcomes and capabilities)"
     
     }
 
