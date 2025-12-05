@@ -64,8 +64,8 @@ async def generate_badge(request: BadgeRequest):
             logger.warning("Badge validation failed: %s", ve)
             raise HTTPException(status_code=502, detail=f"Badge schema validation error: {ve}")
 
-        # Generate image configuration with random selection
-        image_type = random.choice(["text_overlay", "icon_based"])
+        # Generate image configuration with random selection (using text_overlay only for now)
+        image_type = random.choice(["text_overlay", "text_overlay"])
         logger.info(f"Selected image type: {image_type}")
 
         if image_type == "icon_based":
@@ -538,8 +538,8 @@ Parameters:
                                 except Exception as color_error:
                                     logger.warning(f"Failed to scrape colors from {request.institute_url}: {color_error}")
 
-                            # Generate image configuration with random selection
-                            image_type = random.choice(["text_overlay", "icon_based"])
+                            # Generate image configuration with random selection (using text_overlay only for now)
+                            image_type = random.choice(["text_overlay", "text_overlay"])
                             logger.info(f"Selected image type: {image_type}")
 
                             if image_type == "icon_based":
