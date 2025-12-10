@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     LAISER_USE_GPU: bool = os.getenv("LAISER_USE_GPU", "false").lower() == "true"
     LAISER_TOP_K: int = int(os.getenv("LAISER_TOP_K", "10"))
 
+    # Guidance Configuration for Structured JSON Output
+    USE_GUIDANCE: bool = os.getenv("USE_GUIDANCE", "true").lower() == "true"
+
     # Style Descriptions
     STYLE_DESCRIPTIONS: Dict = {
     "Professional": "Style Instructions: Use formal, business-oriented language emphasizing industry standards and career advancement. Write in a professional corporate tone. Focus on business value, organizational impact, and career development. Use formal language suitable for executive presentations and HR documentation. Badge Naming: Create formal, professional titles that emphasize credibility and career value (e.g., 'Executive Leadership Certificate', 'Strategic Business Analyst Credential', 'Professional Project Management Badge'). Use titles that would appear on a resume or LinkedIn profile.",

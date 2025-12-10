@@ -53,6 +53,9 @@ faiss-cpu>=1.7.0
 # Google AI
 google-generativeai
 
+# Structured LLM Output
+guidance>=0.3.0
+
 # Utilities
 psutil>=5.8.0,<6.0.0
 ipython>=7.0.0,<8.0.0
