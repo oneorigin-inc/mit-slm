@@ -6,7 +6,7 @@ import re
 import httpx
 from datetime import datetime
 from typing import AsyncGenerator, List, Dict, Any, Optional
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Form, File, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ValidationError
 import uuid
@@ -46,9 +46,43 @@ def handle_error(error: Exception, operation: str, request_id: Optional[str] = N
 
 
 @router.post("/generate-badge-suggestions", response_model=BadgeResponse)
-async def generate_badge(request: BadgeRequest):
-    """Generate a single badge with random parameter selection"""
+async def generate_badge(
+    course_input: str = Form(...),
+    badge_style: str = Form(""),
+    badge_tone: str = Form(""),
+    criterion_style: str = Form(""),
+    custom_instructions: Optional[str] = Form(None),
+    badge_level: str = Form(""),
+    institution: Optional[str] = Form(None),
+    institute_url: Optional[str] = Form(None),
+    context_length: Optional[int] = Form(None),
+    enable_skill_extraction: bool = Form(False),
+    image_type: Optional[str] = Form(None),
+    logo: Optional[UploadFile] = File(None)
+):
+    """Generate a single badge with random parameter selection (multipart form-data)"""
     start_time = time.time()
+
+    # Read logo bytes if provided
+    logo_bytes = None
+    if logo and logo.filename:
+        logo_bytes = await logo.read()
+
+    # Construct BadgeRequest from form data for compatibility with existing code
+    request = BadgeRequest(
+        course_input=course_input,
+        badge_style=badge_style,
+        badge_tone=badge_tone,
+        criterion_style=criterion_style,
+        custom_instructions=custom_instructions,
+        badge_level=badge_level,
+        institution=institution,
+        institute_url=institute_url,
+        context_length=context_length,
+        enable_skill_extraction=enable_skill_extraction,
+        image_type=image_type
+    )
+
     try:
         # Generate badge metadata with random parameters
         badge_json = await generate_badge_metadata_async(request)
@@ -64,11 +98,14 @@ async def generate_badge(request: BadgeRequest):
             logger.warning("Badge validation failed: %s", ve)
             raise HTTPException(status_code=502, detail=f"Badge schema validation error: {ve}")
 
-        # Generate image configuration with random selection (using text_overlay only for now)
-        image_type = random.choice(["text_overlay", "text_overlay"])
-        logger.info(f"Selected image type: {image_type}")
+        # Generate image configuration - respect request.image_type if provided
+        if request.image_type and request.image_type in ["text_overlay", "icon_based"]:
+            image_type_selected = request.image_type
+        else:
+            image_type_selected = random.choice(["text_overlay", "text_overlay"])
+        logger.info(f"Selected image type: {image_type_selected}")
 
-        if image_type == "icon_based":
+        if image_type_selected == "icon_based":
             icon_suggestions = await get_icon_suggestions_for_badge(
                 badge_name=validated.badge_name,
                 badge_description=validated.badge_description,
@@ -92,7 +129,8 @@ async def generate_badge(request: BadgeRequest):
 
             image_base64, image_config = await generate_badge_with_text(
                 short_title=optimized_text.get("short_title", validated.badge_name),
-                achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked")
+                achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
+                logo_bytes=logo_bytes
             )
 
         # Generate badge ID
@@ -401,12 +439,45 @@ def _normalize_badge_json(badge_json: Dict[str, Any]) -> Dict[str, Any]:
     return badge_json
 
 @router.post("/generate-badge-suggestions/stream")
-async def generate_badge_stream(request: BadgeRequest):
-    """Generate badge suggestions with streaming response"""    
+async def generate_badge_stream(
+    course_input: str = Form(...),
+    badge_style: str = Form(""),
+    badge_tone: str = Form(""),
+    criterion_style: str = Form(""),
+    custom_instructions: Optional[str] = Form(None),
+    badge_level: str = Form(""),
+    institution: Optional[str] = Form(None),
+    institute_url: Optional[str] = Form(None),
+    context_length: Optional[int] = Form(None),
+    enable_skill_extraction: bool = Form(False),
+    image_type: Optional[str] = Form(None),
+    logo: Optional[UploadFile] = File(None)
+):
+    """Generate badge suggestions with streaming response (multipart form-data)"""
     start_time = time.time()
     request_id = None
     badge_id = str(uuid.uuid4())
-    
+
+    # Read logo bytes if provided
+    logo_bytes = None
+    if logo and logo.filename:
+        logo_bytes = await logo.read()
+
+    # Construct BadgeRequest from form data for compatibility with existing code
+    request = BadgeRequest(
+        course_input=course_input,
+        badge_style=badge_style,
+        badge_tone=badge_tone,
+        criterion_style=criterion_style,
+        custom_instructions=custom_instructions,
+        badge_level=badge_level,
+        institution=institution,
+        institute_url=institute_url,
+        context_length=context_length,
+        enable_skill_extraction=enable_skill_extraction,
+        image_type=image_type
+    )
+
     try:
         current_params = get_random_parameters(request)
         
@@ -538,8 +609,11 @@ Parameters:
                                 except Exception as color_error:
                                     logger.warning(f"Failed to scrape colors from {request.institute_url}: {color_error}")
 
-                            # Generate image configuration with random selection (using text_overlay only for now)
-                            image_type = random.choice(["text_overlay", "text_overlay"])
+                            # Generate image configuration - respect request.image_type if provided
+                            if request.image_type and request.image_type in ["text_overlay", "icon_based"]:
+                                image_type = request.image_type
+                            else:
+                                image_type = random.choice(["text_overlay", "text_overlay"])
                             logger.info(f"Selected image type: {image_type}")
 
                             if image_type == "icon_based":
@@ -567,9 +641,9 @@ Parameters:
 
                                 image_base64, image_config = await generate_badge_with_text(
                                     short_title=optimized_text.get("short_title", validated.badge_name),
-                    
                                     achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
-                                    colors=institution_colors
+                                    colors=institution_colors,
+                                    logo_bytes=logo_bytes
                                 )
                             # Log image generation summary (do not log full base64)
                             try:
