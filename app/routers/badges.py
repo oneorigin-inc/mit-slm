@@ -53,6 +53,9 @@ async def generate_badge(request: BadgeRequest):
         # Generate badge metadata with random parameters
         badge_json = await generate_badge_metadata_async(request)
 
+        # Normalize the badge JSON to ensure criteria format
+        badge_json = _normalize_badge_json(badge_json)
+
         try:
             validated = BadgeValidated(
                 badge_name=badge_json.get("badge_name", ""),
@@ -111,7 +114,9 @@ async def generate_badge(request: BadgeRequest):
                         "id": f"https://example.com/achievements/badge_{badge_id}/image",
                         "image_base64": image_base64
                     },
-                    "name": validated.badge_name
+                    "name": validated.badge_name,
+                    "raw_model_output": validated.raw_model_output
+                   
                 }
             },
             imageConfig=image_config,
@@ -733,6 +738,213 @@ Parameters:
         log_response("Streaming badge suggestions generation", False, request_id)
         raise handle_error(e, "Streaming badge suggestions generation", request_id)
     
+@router.post("/generate-badge-suggestions/stream-rag")
+async def generate_badge_stream_rag(request: BadgeRequest):
+    """Generate badge suggestions with RAG-enhanced streaming response"""
+    start_time = time.time()
+    request_id = None
+    badge_id = str(uuid.uuid4())
+
+    try:
+        async def generate_stream_response():
+            nonlocal request_id
+            accumulated_text = ""
+            badge_json = None
+            token_usage_data = None
+
+            try:
+                # Use the RAG-enhanced streaming service
+                async for chunk in generate_badge_metadata_stream_async(request):
+                    # Track request ID
+                    if chunk.get("request_id") and not request_id:
+                        request_id = chunk.get("request_id")
+
+                    # Handle different chunk types
+                    if chunk.get("type") == "token":
+                        accumulated_text += chunk.get("content", "")
+                        formatted_chunk = format_streaming_response({
+                            "type": "token",
+                            "content": chunk.get("content", ""),
+                            "accumulated": accumulated_text,
+                            "badge_id": badge_id
+                        })
+                        yield formatted_chunk
+
+                    elif chunk.get("type") == "final":
+                        # Get the processed badge JSON from RAG service
+                        badge_json = chunk.get("content", {})
+                        token_usage_data = badge_json.get("metrics", {})
+
+                        # Normalize the badge JSON to ensure criteria format
+                        badge_json = _normalize_badge_json(badge_json)
+
+                        try:
+                            # Validate badge data
+                            validated = BadgeValidated(
+                                badge_name=badge_json.get("badge_name", ""),
+                                badge_description=badge_json.get("badge_description", ""),
+                                criteria=badge_json.get("criteria", {}),
+                                raw_model_output=badge_json.get("raw_model_output", "")
+                            )
+                        except ValidationError as ve:
+                            logger.warning("Badge validation failed: %s", ve)
+                            error_chunk = {
+                                "type": "error",
+                                "content": f"Badge schema validation error: {ve}",
+                                "badge_id": badge_id
+                            }
+                            yield format_streaming_response(error_chunk)
+                            return
+
+                        # Scrape institution colors if URL provided
+                        institution_colors = None
+                        if request.institute_url:
+                            try:
+                                from app.services.web_color_scraper import scrape_institution_colors_async
+                                institution_colors = await scrape_institution_colors_async(request.institute_url)
+                                logger.info(f"Scraped colors from {request.institute_url}: {institution_colors}")
+                            except Exception as color_error:
+                                logger.warning(f"Failed to scrape colors from {request.institute_url}: {color_error}")
+
+                        # Generate image configuration with random selection
+                        image_type = random.choice(["text_overlay", "icon_based"])
+                        logger.info(f"Selected image type: {image_type}")
+
+                        if image_type == "icon_based":
+                            icon_suggestions_result = await get_icon_suggestions_for_badge(
+                                badge_name=validated.badge_name,
+                                badge_description=validated.badge_description,
+                                custom_instructions=request.custom_instructions or "",
+                                top_k=3
+                            )
+
+                            icon_name = icon_suggestions_result.get('suggested_icon', {}).get('name', 'trophy.png')
+
+                            image_base64, image_config = await generate_badge_with_icon(
+                                icon_name=icon_name,
+                                colors=institution_colors
+                            )
+                        else:
+                            optimized_text = await optimize_badge_text({
+                                "badge_name": validated.badge_name,
+                                "badge_description": validated.badge_description,
+                                "institution": request.institution or ""
+                            })
+
+                            image_base64, image_config = await generate_badge_with_text(
+                                short_title=optimized_text.get("short_title", validated.badge_name),
+                                achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
+                                colors=institution_colors
+                            )
+
+                        # Transform to BadgeResponse format
+                        result = BadgeResponse(
+                            credentialSubject={
+                                "achievement": {
+                                    "criteria": validated.criteria,
+                                    "description": validated.badge_description,
+                                    "image": {
+                                        "id": f"https://example.com/achievements/badge_{badge_id}/image",
+                                        "image_base64": image_base64
+                                    },
+                                    "name": validated.badge_name
+                                }
+                            },
+                            imageConfig=image_config,
+                            badge_id=badge_id
+                        )
+
+                        # Extract skills if enabled
+                        if request.enable_skill_extraction and skill_service.is_ready():
+                            try:
+                                skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
+                                extracted_skills = skill_service.extract_skills(
+                                    text=skill_extraction_text,
+                                    top_k=settings.LAISER_TOP_K
+                                )
+                                result.skills = extracted_skills
+                                logger.info(f"Extracted {len(extracted_skills)} skills for RAG streaming badge {badge_id}")
+                            except Exception as e:
+                                logger.warning(f"Skill extraction failed for RAG streaming badge {badge_id}: {e}")
+                                result.skills = []
+
+                        # Store in history
+                        history_entry = {
+                            "id": len(badge_history) + 1,
+                            "timestamp": datetime.now().isoformat(),
+                            "course_input": (request.course_input[:100] + "...") if len(request.course_input) > 100 else request.course_input,
+                            "processed_course_input": badge_json.get("processed_course_input", request.course_input),
+                            "user_badge_style": request.badge_style,
+                            "user_badge_tone": request.badge_tone,
+                            "user_criterion_style": request.criterion_style,
+                            "user_badge_level": request.badge_level,
+                            "custom_instructions": request.custom_instructions,
+                            "institution": request.institution,
+                            "selected_image_type": image_type,
+                            "selected_parameters": badge_json.get("selected_parameters", {}),
+                            "retrieved_examples": badge_json.get("retrieved_examples", []),
+                            "vector_db_updated": badge_json.get("vector_db_updated", False),
+                            "badge_id": badge_id,
+                            "result": result,
+                            "generation_time": time.time() - start_time,
+                            "metrics": token_usage_data or {}
+                        }
+                        badge_history.append(history_entry)
+
+                        if len(badge_history) > 50:
+                            badge_history.pop(0)
+
+                        # Convert result to dict for streaming
+                        if hasattr(result, 'dict'):
+                            result_dict = result.dict()
+                        elif hasattr(result, '__dict__'):
+                            result_dict = result.__dict__
+                        else:
+                            result_dict = dict(result) if isinstance(result, dict) else {}
+
+                        # Add RAG metadata to response
+                        result_dict["retrieved_examples"] = badge_json.get("retrieved_examples", [])
+                        result_dict["vector_db_updated"] = badge_json.get("vector_db_updated", False)
+
+                        final_chunk = {
+                            "type": "final",
+                            "content": result_dict,
+                            "badge_id": badge_id,
+                            "generation_time": time.time() - start_time,
+                            "metrics": token_usage_data or {}
+                        }
+                        yield format_streaming_response(final_chunk)
+
+                        selected_params = badge_json.get("selected_parameters", {})
+                        logger.info(f"Generated RAG badge ID {badge_id}: '{validated.badge_name}' with parameters: {selected_params}")
+
+                    elif chunk.get("type") == "error":
+                        yield format_streaming_response(chunk)
+
+                log_response("RAG streaming badge generation", True, request_id)
+
+            except Exception as e:
+                error_chunk = {
+                    "type": "error",
+                    "content": f"RAG streaming generation failed: {str(e)}",
+                    "request_id": request_id,
+                    "badge_id": badge_id
+                }
+                yield format_streaming_response(error_chunk)
+                log_response("RAG streaming badge generation", False, request_id)
+
+        return create_streaming_response(generate_stream_response())
+
+    except ValueError as e:
+        error_msg = f"Validation error: {str(e)}"
+        logger.error(error_msg)
+        raise HTTPException(status_code=400, detail=error_msg)
+
+    except Exception as e:
+        log_response("RAG streaming badge generation", False, request_id)
+        raise handle_error(e, "RAG streaming badge generation", request_id)
+
+
 class BadgeRegenerateRequest(BaseModel):
     """Request model for badge regeneration using custom instructions"""
     custom_instructions: str  # e.g., "give badge name", "make it more concise", "focus on leadership"

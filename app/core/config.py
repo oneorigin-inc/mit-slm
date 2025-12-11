@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     # NLTK Configuration
     NLTK_AVAILABLE: bool = True
 
+    # RAG Vector Database Configuration
+    AUTO_UPDATE_VECTOR_DB: bool = os.getenv("AUTO_UPDATE_VECTOR_DB", "true").lower() == "true"
+    RAG_USE_GPU: bool = os.getenv("RAG_USE_GPU", "false").lower() == "true"
+
     # LAiSER Skill Extraction Configuration
     LAISER_MODEL_ID: str = os.getenv("LAISER_MODEL_ID", "bert-base-uncased")
     LAISER_HF_TOKEN: str = os.getenv("LAISER_HF_TOKEN", "")
