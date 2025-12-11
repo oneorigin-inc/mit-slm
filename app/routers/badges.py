@@ -58,6 +58,10 @@ async def generate_badge(
     context_length: Optional[int] = Form(None),
     enable_skill_extraction: bool = Form(False),
     image_type: Optional[str] = Form(None),
+    primary_color: Optional[str] = Form(None),
+    secondary_color: Optional[str] = Form(None),
+    border_color: Optional[str] = Form(None),
+    border_width: Optional[int] = Form(None),
     logo: Optional[UploadFile] = File(None)
 ):
     """Generate a single badge with random parameter selection (multipart form-data)"""
@@ -80,7 +84,11 @@ async def generate_badge(
         institute_url=institute_url,
         context_length=context_length,
         enable_skill_extraction=enable_skill_extraction,
-        image_type=image_type
+        image_type=image_type,
+        primary_color=primary_color,
+        secondary_color=secondary_color,
+        border_color=border_color,
+        border_width=border_width
     )
 
     try:
@@ -97,6 +105,15 @@ async def generate_badge(
         except ValidationError as ve:
             logger.warning("Badge validation failed: %s", ve)
             raise HTTPException(status_code=502, detail=f"Badge schema validation error: {ve}")
+
+        # Build custom colors if provided in request
+        custom_colors = None
+        if request.primary_color or request.secondary_color:
+            custom_colors = {}
+            if request.primary_color:
+                custom_colors["primary"] = request.primary_color
+            if request.secondary_color:
+                custom_colors["secondary"] = request.secondary_color
 
         # Generate image configuration - respect request.image_type if provided
         if request.image_type and request.image_type in ["text_overlay", "icon_based"]:
@@ -117,7 +134,8 @@ async def generate_badge(
             icon_name = icon_suggestions.get('suggested_icon', {}).get('name', 'trophy.png')
 
             image_base64, image_config = await generate_badge_with_icon(
-                icon_name=icon_name
+                icon_name=icon_name,
+                colors=custom_colors
             )
 
         else:  # text_overlay
@@ -130,7 +148,10 @@ async def generate_badge(
             image_base64, image_config = await generate_badge_with_text(
                 short_title=optimized_text.get("short_title", validated.badge_name),
                 achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
-                logo_bytes=logo_bytes
+                logo_bytes=logo_bytes,
+                colors=custom_colors,
+                border_color=request.border_color,
+                border_width=request.border_width
             )
 
         # Generate badge ID
@@ -451,6 +472,10 @@ async def generate_badge_stream(
     context_length: Optional[int] = Form(None),
     enable_skill_extraction: bool = Form(False),
     image_type: Optional[str] = Form(None),
+    primary_color: Optional[str] = Form(None),
+    secondary_color: Optional[str] = Form(None),
+    border_color: Optional[str] = Form(None),
+    border_width: Optional[int] = Form(None),
     logo: Optional[UploadFile] = File(None)
 ):
     """Generate badge suggestions with streaming response (multipart form-data)"""
@@ -475,7 +500,11 @@ async def generate_badge_stream(
         institute_url=institute_url,
         context_length=context_length,
         enable_skill_extraction=enable_skill_extraction,
-        image_type=image_type
+        image_type=image_type,
+        primary_color=primary_color,
+        secondary_color=secondary_color,
+        border_color=border_color,
+        border_width=border_width
     )
 
     try:
@@ -599,15 +628,27 @@ Parameters:
                                 yield format_streaming_response(error_chunk)
                                 return
 
-                            # Scrape institution colors if URL provided
+                            # Build custom colors if provided in request
+                            custom_colors = None
+                            if request.primary_color or request.secondary_color:
+                                custom_colors = {}
+                                if request.primary_color:
+                                    custom_colors["primary"] = request.primary_color
+                                if request.secondary_color:
+                                    custom_colors["secondary"] = request.secondary_color
+
+                            # Scrape institution colors if URL provided and no custom colors
                             institution_colors = None
-                            if request.institute_url:
+                            if not custom_colors and request.institute_url:
                                 try:
                                     from app.services.web_color_scraper import scrape_institution_colors_async
                                     institution_colors = await scrape_institution_colors_async(request.institute_url)
                                     logger.info(f"Scraped colors from {request.institute_url}: {institution_colors}")
                                 except Exception as color_error:
                                     logger.warning(f"Failed to scrape colors from {request.institute_url}: {color_error}")
+
+                            # Use custom colors if provided, otherwise use scraped colors
+                            colors_to_use = custom_colors if custom_colors else institution_colors
 
                             # Generate image configuration - respect request.image_type if provided
                             if request.image_type and request.image_type in ["text_overlay", "icon_based"]:
@@ -629,7 +670,7 @@ Parameters:
 
                                 image_base64, image_config = await generate_badge_with_icon(
                                     icon_name=icon_name,
-                                    colors=institution_colors
+                                    colors=colors_to_use
                                 )
 
                             else:  # text_overlay
@@ -642,8 +683,10 @@ Parameters:
                                 image_base64, image_config = await generate_badge_with_text(
                                     short_title=optimized_text.get("short_title", validated.badge_name),
                                     achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
-                                    colors=institution_colors,
-                                    logo_bytes=logo_bytes
+                                    logo_bytes=logo_bytes,
+                                    colors=colors_to_use,
+                                    border_color=request.border_color,
+                                    border_width=request.border_width
                                 )
                             # Log image generation summary (do not log full base64)
                             try:

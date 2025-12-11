@@ -13,6 +13,10 @@ class BadgeRequest(BaseModel):
     context_length: Optional[int] = Field(default=None, description="Context length override (tokens)")
     enable_skill_extraction: bool = Field(default=False, description="Enable LAiSER skill extraction for this request")
     image_type: Optional[str] = Field(default=None, description="Force image type: 'text_overlay' or 'icon_based'. If None, randomly selected")
+    primary_color: Optional[str] = Field(default=None, description="Primary color hex code for badge (e.g., '#A31F34')")
+    secondary_color: Optional[str] = Field(default=None, description="Secondary color hex code for badge (e.g., '#8A8B8C')")
+    border_color: Optional[str] = Field(default=None, description="Border color hex code (e.g., '#000000')")
+    border_width: Optional[int] = Field(default=None, description="Border width in pixels (e.g., 6)")
 
 class RegenerationRequest(BaseModel):
     course_input: str = Field(..., description="Original course content")
