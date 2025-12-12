@@ -17,6 +17,7 @@ async def generate_badge_with_text(
     colors: Optional[dict] = None,
     border_color: Optional[str] = None,
     border_width: Optional[int] = None,
+    shape: Optional[str] = None,
     logo_bytes: Optional[bytes] = None
 ) -> Tuple[str, Dict[str, Any]]:
     """
@@ -28,6 +29,7 @@ async def generate_badge_with_text(
         colors: Optional brand colors (primary, secondary, tertiary)
         border_color: Optional border color hex code (e.g., '#000000')
         border_width: Optional border width in pixels (e.g., 6)
+        shape: Optional badge shape ('hexagon', 'circle', or 'rounded_rect')
         logo_bytes: Optional logo image bytes for custom logo
 
     Returns:
@@ -50,6 +52,8 @@ async def generate_badge_with_text(
                     data["border_color"] = border_color
                 if border_width is not None:
                     data["border_width"] = str(border_width)
+                if shape:
+                    data["shape"] = shape
 
                 response = await client.post(
                     f"{settings.BADGE_IMAGE_SERVICE_URL}/api/v1/badge/generate-with-text",
@@ -64,8 +68,9 @@ async def generate_badge_with_text(
                         "short_title": short_title,
                         "achievement_phrase": achievement_phrase,
                         "colors": colors,
-                    "border_color": border_color,
-                    "border_width": border_width
+                        "border_color": border_color,
+                        "border_width": border_width,
+                        "shape": shape
                     }
                 )
             response.raise_for_status()

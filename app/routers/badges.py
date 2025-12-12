@@ -62,6 +62,7 @@ async def generate_badge(
     secondary_color: Optional[str] = Form(None),
     border_color: Optional[str] = Form(None),
     border_width: Optional[int] = Form(None),
+    shape: Optional[str] = Form(None),
     logo: Optional[UploadFile] = File(None)
 ):
     """Generate a single badge with random parameter selection (multipart form-data)"""
@@ -88,7 +89,8 @@ async def generate_badge(
         primary_color=primary_color,
         secondary_color=secondary_color,
         border_color=border_color,
-        border_width=border_width
+        border_width=border_width,
+        shape=shape
     )
 
     try:
@@ -151,7 +153,8 @@ async def generate_badge(
                 logo_bytes=logo_bytes,
                 colors=custom_colors,
                 border_color=request.border_color,
-                border_width=request.border_width
+                border_width=request.border_width,
+                shape=request.shape
             )
 
         # Generate badge ID
@@ -476,6 +479,7 @@ async def generate_badge_stream(
     secondary_color: Optional[str] = Form(None),
     border_color: Optional[str] = Form(None),
     border_width: Optional[int] = Form(None),
+    shape: Optional[str] = Form(None),
     logo: Optional[UploadFile] = File(None)
 ):
     """Generate badge suggestions with streaming response (multipart form-data)"""
@@ -504,7 +508,8 @@ async def generate_badge_stream(
         primary_color=primary_color,
         secondary_color=secondary_color,
         border_color=border_color,
-        border_width=border_width
+        border_width=border_width,
+        shape=shape
     )
 
     try:
@@ -686,7 +691,8 @@ Parameters:
                                     logo_bytes=logo_bytes,
                                     colors=colors_to_use,
                                     border_color=request.border_color,
-                                    border_width=request.border_width
+                                    border_width=request.border_width,
+                                    shape=request.shape
                                 )
                             # Log image generation summary (do not log full base64)
                             try:
