@@ -200,20 +200,41 @@ Parameters:
         for badge in retrieved_badges
     ]
 
-    # Auto-update vector database with new badge (controlled by settings)
+    # Auto-update vector database with new badge (controlled by settings and similarity threshold)
     if settings.AUTO_UPDATE_VECTOR_DB and result.get("badge_name") and result.get("badge_description"):
         try:
-            model = get_embedding_model()
-            badge_for_db = {
-                "badge_name": result["badge_name"],
-                "badge_description": result["badge_description"],
-                "criteria": result.get("criteria", {}),
-                "course_input": processed_course_input
-            }
-            success = add_badge_to_vector_db(badge_for_db, model=model)
-            result["vector_db_updated"] = success
-            if success:
-                logger.info(f"Added new badge to vector DB: {result['badge_name']}")
+            # Create comparison text from the NEW badge (not course input)
+            criteria_text = result.get("criteria", {}).get("narrative", "") if isinstance(result.get("criteria"), dict) else str(result.get("criteria", ""))
+            badge_comparison_text = f"{result['badge_name']} {result['badge_description']} {criteria_text}"
+
+            # Check similarity of the NEW badge against existing badges in the vector DB
+            similarity_check = retrieve_badge(badge_comparison_text, k=1)
+            highest_similarity = similarity_check[0]['score'] if similarity_check else 0.0
+
+            if highest_similarity < settings.RAG_SIMILARITY_THRESHOLD:
+                # Badge is sufficiently different, add ALL data to vector DB
+                model = get_embedding_model()
+                badge_for_db = {
+                    "badge_name": result["badge_name"],
+                    "badge_description": result["badge_description"],
+                    "criteria": result.get("criteria", {}),
+                    "course_input": processed_course_input  # Include course input in DB
+                }
+                success = add_badge_to_vector_db(badge_for_db, model=model)
+                result["vector_db_updated"] = success
+                if success:
+                    logger.info(
+                        f"✓ Added new badge to vector DB: '{result['badge_name']}' "
+                        f"(similarity: {highest_similarity:.3f} < threshold: {settings.RAG_SIMILARITY_THRESHOLD})"
+                    )
+            else:
+                # Badge is too similar to existing badges, skip adding
+                result["vector_db_updated"] = False
+                result["similarity_skip_reason"] = f"Badge too similar to existing (similarity: {highest_similarity:.3f} >= threshold: {settings.RAG_SIMILARITY_THRESHOLD})"
+                logger.info(
+                    f"✗ Skipped adding badge to vector DB: '{result['badge_name']}' "
+                    f"(similarity: {highest_similarity:.3f} >= threshold: {settings.RAG_SIMILARITY_THRESHOLD})"
+                )
         except Exception as e:
             logger.warning(f"Failed to update vector DB: {e}")
             result["vector_db_updated"] = False
@@ -354,20 +375,41 @@ Generate badge metadata now:"""
                     for badge in retrieved_badges
                 ]
 
-                # Auto-update vector database with new badge (controlled by settings)
+                # Auto-update vector database with new badge (controlled by settings and similarity threshold)
                 if settings.AUTO_UPDATE_VECTOR_DB and badge_json.get("badge_name") and badge_json.get("badge_description"):
                     try:
-                        model = get_embedding_model()
-                        badge_for_db = {
-                            "badge_name": badge_json["badge_name"],
-                            "badge_description": badge_json["badge_description"],
-                            "criteria": badge_json.get("criteria", {}),
-                            "course_input": processed_input
-                        }
-                        success = add_badge_to_vector_db(badge_for_db, model=model)
-                        badge_json["vector_db_updated"] = success
-                        if success:
-                            logger.info(f"Added new badge to vector DB: {badge_json['badge_name']}")
+                        # Create comparison text from the NEW badge (not course input)
+                        criteria_text = badge_json.get("criteria", {}).get("narrative", "") if isinstance(badge_json.get("criteria"), dict) else str(badge_json.get("criteria", ""))
+                        badge_comparison_text = f"{badge_json['badge_name']} {badge_json['badge_description']} {criteria_text}"
+
+                        # Check similarity of the NEW badge against existing badges in the vector DB
+                        similarity_check = retrieve_badge(badge_comparison_text, k=1)
+                        highest_similarity = similarity_check[0]['score'] if similarity_check else 0.0
+
+                        if highest_similarity < settings.RAG_SIMILARITY_THRESHOLD:
+                            # Badge is sufficiently different, add ALL data to vector DB
+                            model = get_embedding_model()
+                            badge_for_db = {
+                                "badge_name": badge_json["badge_name"],
+                                "badge_description": badge_json["badge_description"],
+                                "criteria": badge_json.get("criteria", {}),
+                                "course_input": processed_input  # Include course input in DB
+                            }
+                            success = add_badge_to_vector_db(badge_for_db, model=model)
+                            badge_json["vector_db_updated"] = success
+                            if success:
+                                logger.info(
+                                    f"✓ Added new badge to vector DB (streaming): '{badge_json['badge_name']}' "
+                                    f"(similarity: {highest_similarity:.3f} < threshold: {settings.RAG_SIMILARITY_THRESHOLD})"
+                                )
+                        else:
+                            # Badge is too similar to existing badges, skip adding
+                            badge_json["vector_db_updated"] = False
+                            badge_json["similarity_skip_reason"] = f"Badge too similar to existing (similarity: {highest_similarity:.3f} >= threshold: {settings.RAG_SIMILARITY_THRESHOLD})"
+                            logger.info(
+                                f"✗ Skipped adding badge to vector DB (streaming): '{badge_json['badge_name']}' "
+                                f"(similarity: {highest_similarity:.3f} >= threshold: {settings.RAG_SIMILARITY_THRESHOLD})"
+                            )
                     except Exception as e:
                         logger.warning(f"Failed to update vector DB: {e}")
                         badge_json["vector_db_updated"] = False

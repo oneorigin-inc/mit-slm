@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # RAG Vector Database Configuration
     AUTO_UPDATE_VECTOR_DB: bool = os.getenv("AUTO_UPDATE_VECTOR_DB", "true").lower() == "true"
     RAG_USE_GPU: bool = os.getenv("RAG_USE_GPU", "false").lower() == "true"
+    # Similarity threshold for adding badges to vector DB (0.0-1.0)
+    # If new badge's similarity to existing badges is BELOW this threshold, it gets added
+    # Lower value = more strict (only very different badges are added)
+    # Higher value = more lenient (more badges are added)
+    # Default: 0.85 (85% similarity threshold)
+    RAG_SIMILARITY_THRESHOLD: float = float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.85"))
 
     # LAiSER Skill Extraction Configuration
     LAISER_MODEL_ID: str = os.getenv("LAISER_MODEL_ID", "bert-base-uncased")
@@ -76,6 +82,6 @@ class Settings(BaseSettings):
     
     }
 
-    model_config = {"env_file": ".env"}  # Updated for Pydantic v2
+    model_config = {"env_file": ".env"}  
 
 settings = Settings()
