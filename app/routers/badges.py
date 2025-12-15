@@ -29,7 +29,9 @@ from app.models.badge import (
 )
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 from rag.retrieve_ob3 import retrieve_badge
+from rag.update_vector_db import add_badge_to_vector_db
 from app.services.badge_generator import (
+    get_embedding_model,
     generate_badge_metadata_async,
     generate_badge_metadata_stream_async,
     get_random_parameters,
@@ -1115,6 +1117,272 @@ async def regenerate_field(request: FieldRegenerateRequest):
     except Exception as e:
         logger.exception("Unexpected error in /regenerate-field: %s", e)
         raise HTTPException(status_code=500, detail=f"Field regeneration error: {str(e)}")
+
+
+def build_field_specific_prompt_with_rag(field: str, original_badge: Dict[str, Any], custom_instructions: Optional[str] = None, top_k: int = 2) -> tuple[str, List[Dict]]:
+    """
+    Build a token-efficient RAG-enhanced prompt for regenerating a specific field.
+    Only includes the target field from retrieved examples to save tokens.
+    """
+
+    # Extract current badge data
+    result = original_badge.get("result", {})
+    if hasattr(result, 'dict'):
+        result_dict = result.dict()
+    elif hasattr(result, '__dict__'):
+        result_dict = result.__dict__
+    else:
+        result_dict = result
+
+    achievement = result_dict.get("credentialSubject", {}).get("achievement", {})
+    current_title = achievement.get("name", "")
+    current_description = achievement.get("description", "")
+    current_criteria = achievement.get("criteria", {})
+
+    course_input = original_badge.get("course_input", "")
+    processed_course_input = original_badge.get("processed_course_input", course_input)
+
+    # Field-specific prompts and labels
+    field_config = {
+        "title": {
+            "prompt": "Generate ONLY a new badge title/name. Follow the style and quality of the examples above.",
+            "label": "BADGE TITLES",
+            "current_value": current_title
+        },
+        "description": {
+            "prompt": "Generate ONLY a new badge description. Follow the style and structure of the examples above.",
+            "label": "BADGE DESCRIPTIONS",
+            "current_value": current_description
+        },
+        "criteria": {
+            "prompt": "Generate ONLY new achievement criteria text. Focus on what learners must demonstrate. Follow the format and style of the examples above.",
+            "label": "ACHIEVEMENT CRITERIA",
+            "current_value": current_criteria.get('narrative', '') if isinstance(current_criteria, dict) else current_criteria
+        }
+    }
+
+    config = field_config[field]
+
+    # RAG: Retrieve similar badges for field-specific examples
+    few_shot_examples = ""
+    retrieved_badges = []
+
+    try:
+        # Create query from current badge context
+        query_text = f"{current_title} {current_description} {processed_course_input}"
+
+        # Retrieve similar badges from vector database
+        retrieved_badges = retrieve_badge(query_text, k=top_k)
+
+        if retrieved_badges:
+            # Build field-specific examples - ONLY include the target field
+            few_shot_examples = f"\n\nHIGH-QUALITY {config['label']} EXAMPLES:\n"
+
+            for i, badge in enumerate(retrieved_badges, 1):
+                # Extract only the field being regenerated
+                if field == "title":
+                    example_value = badge['badge_name']
+                elif field == "description":
+                    example_value = badge['badge_description']
+                elif field == "criteria":
+                    example_value = badge['criterion']
+
+                # Simple, token-efficient format
+                few_shot_examples += f"{i}. {example_value}\n"
+
+            few_shot_examples += f"\nGenerate a similar quality {field}, unique and tailored to the course below.\n"
+            logger.info(f"Retrieved {len(retrieved_badges)} similar badges for {field} regeneration")
+
+    except Exception as e:
+        logger.warning(f"RAG retrieval failed for field regeneration: {e}")
+        # Continue without RAG if retrieval fails
+
+    # Build minimal, token-efficient context
+    context = f"""Current {field}: {config['current_value']}
+
+Course: {course_input}
+{few_shot_examples}
+Task: {config['prompt']}"""
+
+    if custom_instructions:
+        context += f"\n\nIMPORTANT - Custom Instructions (override defaults): {custom_instructions}"
+
+    context += f"\n\nOutput ONLY the new {field} text:"
+
+    return context, retrieved_badges
+
+
+@router.post("/regenerate-field-rag", response_model=BadgeResponse)
+async def regenerate_field_with_rag(request: FieldRegenerateRequest):
+    """
+    Regenerate a specific field of an existing badge using RAG-enhanced prompting.
+
+    This endpoint retrieves similar badges from the vector database and uses them
+    as examples to generate higher quality field values.
+
+    Args:
+        request: Contains badge_id, field_to_change, and optional custom_instructions
+
+    Returns:
+        Updated badge with the regenerated field
+    """
+    start_time = time.time()
+
+    try:
+        # Get original badge from history
+        original_badge = get_badge_from_history(request.badge_id)
+        logger.info(f"Starting RAG field regeneration for badge {request.badge_id}, field: {request.field_to_change}")
+
+        # Build RAG-enhanced field-specific prompt
+        prompt, retrieved_badges = build_field_specific_prompt_with_rag(
+            field=request.field_to_change,
+            original_badge=original_badge,
+            custom_instructions=request.custom_instructions,
+            top_k=2  # Retrieve top 3 similar badges
+        )
+        logger.info(f"Retrieved {len(retrieved_badges)} similar badges for RAG context")
+
+        # Import ollama service
+        from app.services.ollama_client import ollama_client
+        MODEL_CONFIG = settings.MODEL_CONFIG
+
+        # Generate new field value
+        new_value = ""
+        metrics = {}
+        async for chunk in ollama_client.generate_stream(
+            content=prompt,
+            temperature=MODEL_CONFIG.get("temperature", 0.2),  # Slightly higher for variety
+            max_tokens=1024,  # More tokens for field regeneration
+            top_p=MODEL_CONFIG.get("top_p", 0.85),
+            top_k=MODEL_CONFIG.get("top_k", 40),
+            repeat_penalty=MODEL_CONFIG.get("repeat_penalty", 1.05)
+        ):
+            if chunk.get("type") == "token":
+                new_value += chunk.get("content", "")
+            elif chunk.get("type") == "final":
+                metrics = chunk.get("metrics", {})
+                break
+            elif chunk.get("type") == "error":
+                raise HTTPException(status_code=500, detail=f"Model error: {chunk.get('content')}")
+
+        # Clean up the generated value
+        new_value = new_value.strip()
+
+        # Remove common formatting artifacts
+        if new_value.startswith('"') and new_value.endswith('"'):
+            new_value = new_value[1:-1]
+        if new_value.startswith("'") and new_value.endswith("'"):
+            new_value = new_value[1:-1]
+
+        if not new_value:
+            raise HTTPException(status_code=500, detail="Model generated empty response")
+
+        # Create updated badge
+        updated_badge = merge_field_update(
+            original_badge=original_badge,
+            field=request.field_to_change,
+            new_value=new_value
+        )
+
+        # Add metrics to updated badge
+        updated_badge.metrics = metrics
+
+        # Auto-update vector database with the regenerated badge (if enabled)
+        vector_db_updated = False
+        similarity_info = None
+
+        if settings.AUTO_UPDATE_VECTOR_DB:
+            logger.info(f"Checking if regenerated badge should be added to vector DB (threshold: {settings.RAG_SIMILARITY_THRESHOLD})")
+            try:
+                # Extract complete badge data from updated badge
+                achievement = updated_badge.credentialSubject.get("achievement", {})
+                badge_name = achievement.get("name", "")
+                badge_description = achievement.get("description", "")
+                criteria = achievement.get("criteria", {})
+
+                # Get course input from original badge
+                course_input = original_badge.get("course_input", "")
+                processed_course_input = original_badge.get("processed_course_input", course_input)
+
+                # Create comparison text from the NEW badge
+                criteria_text = criteria.get("narrative", "") if isinstance(criteria, dict) else str(criteria)
+                badge_comparison_text = f"{badge_name} {badge_description} {criteria_text}"
+
+                # Check similarity of the regenerated badge against existing badges
+                similarity_check = retrieve_badge(badge_comparison_text, k=1)
+                highest_similarity = similarity_check[0]['score'] if similarity_check else 0.0
+
+                logger.info(f"Similarity check: highest_similarity={highest_similarity:.4f}, threshold={settings.RAG_SIMILARITY_THRESHOLD}")
+
+                if highest_similarity < settings.RAG_SIMILARITY_THRESHOLD:
+                    # Badge is sufficiently different, add to vector DB
+                    model = get_embedding_model()
+                    badge_for_db = {
+                        "badge_name": badge_name,
+                        "badge_description": badge_description,
+                        "criteria": criteria,
+                        "course_input": processed_course_input
+                    }
+                    success = add_badge_to_vector_db(badge_for_db, model=model)
+                    vector_db_updated = success
+                    similarity_info = f"Added to DB (similarity: {highest_similarity:.3f} < threshold: {settings.RAG_SIMILARITY_THRESHOLD})"
+
+                    if success:
+                        logger.info(
+                            f"✓ Added regenerated badge to vector DB: '{badge_name}' "
+                            f"(field: {request.field_to_change}, similarity: {highest_similarity:.3f} < threshold: {settings.RAG_SIMILARITY_THRESHOLD})"
+                        )
+                else:
+                    # Badge is too similar, skip adding
+                    similarity_info = f"Skipped (similarity: {highest_similarity:.3f} >= threshold: {settings.RAG_SIMILARITY_THRESHOLD})"
+                    logger.info(
+                        f"✗ Skipped adding regenerated badge to vector DB: '{badge_name}' "
+                        f"(field: {request.field_to_change}, similarity: {highest_similarity:.3f} >= threshold: {settings.RAG_SIMILARITY_THRESHOLD})"
+                    )
+
+            except Exception as e:
+                logger.warning(f"Failed to update vector DB for regenerated badge: {e}")
+                similarity_info = f"Update failed: {str(e)}"
+
+        # Store in history with RAG metadata
+        history_entry = {
+            "id": len(badge_history) + 1,
+            "timestamp": datetime.now().isoformat(),
+            "parent_badge_id": request.badge_id,
+            "field_changed": request.field_to_change,
+            "change_type": "field_regeneration_rag",
+            "custom_instructions": request.custom_instructions,
+            "institution": request.institution,
+            "badge_id": updated_badge.badge_id,
+            "result": updated_badge,
+            "generation_time": time.time() - start_time,
+            "metrics": metrics,
+            "retrieved_examples": [
+                {
+                    "badge_name": badge['badge_name'],
+                    "similarity_score": float(badge['score'])
+                }
+                for badge in retrieved_badges
+            ],
+            "vector_db_updated": vector_db_updated,
+            "similarity_info": similarity_info
+        }
+        badge_history.append(history_entry)
+
+        if len(badge_history) > 50:
+            badge_history.pop(0)
+
+        logger.info(
+            f"RAG-regenerated {request.field_to_change} for badge {updated_badge.badge_id} "
+            f"using {len(retrieved_badges)} similar examples. Vector DB updated: {vector_db_updated}"
+        )
+        return updated_badge
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Unexpected error in /regenerate-field-rag: %s", e)
+        raise HTTPException(status_code=500, detail=f"RAG field regeneration error: {str(e)}")
 
 
 @router.post("/extract-skills/{badge_id}")
