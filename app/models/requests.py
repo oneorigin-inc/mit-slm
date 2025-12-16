@@ -18,6 +18,7 @@ class BadgeRequest(BaseModel):
     border_color: Optional[str] = Field(default=None, description="Border color hex code (e.g., '#000000')")
     border_width: Optional[int] = Field(default=None, description="Border width in pixels (e.g., 6)")
     shape: Optional[str] = Field(default=None, description="Badge shape: 'hexagon', 'circle', or 'rounded_rect'")
+    generate_image: bool = Field(default=True, description="Whether to generate badge image. If False, skips image generation and returns empty image object")
 
 class RegenerationRequest(BaseModel):
     course_input: str = Field(..., description="Original course content")
