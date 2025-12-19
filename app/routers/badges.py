@@ -4,9 +4,10 @@ import logging
 import json
 import re
 import httpx
+import base64
 from datetime import datetime
 from typing import AsyncGenerator, List, Dict, Any, Optional
-from fastapi import APIRouter, HTTPException, Request, Form, File, UploadFile
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ValidationError
 import uuid
@@ -45,6 +46,67 @@ def handle_error(error: Exception, operation: str, request_id: Optional[str] = N
     """Handle and log errors"""
     logger.exception(f"{operation} failed: {error}")
     return HTTPException(status_code=500, detail=f"{operation} failed: {str(error)}")
+
+
+# ============================================================================
+# Compatibility Adapter for Service Layer
+# ============================================================================
+
+class BadgeParams:
+    """
+    Flattened badge parameters for compatibility with badge_generator service layer.
+    Maps nested BadgeRequest to flat structure expected by existing services.
+    """
+    def __init__(self, request: BadgeRequest):
+        # Content fields
+        self.course_input = request.content.input
+        self.badge_style = request.content.style
+        self.badge_tone = request.content.tone
+        self.criterion_style = request.content.criteria
+        self.badge_level = request.content.level
+        self.custom_instructions = request.content.instructions
+
+        # Issuer fields
+        self.institution = request.issuer.name if request.issuer else None
+        self.institute_url = request.issuer.url if request.issuer else None
+
+        # Image fields
+        image = request.image
+        if image:
+            self.generate_image = image.enabled
+            self.image_type = image.type
+            self.shape = image.shape
+            self.border_color = image.border
+            self.border_width = image.border_width
+            self.primary_color = image.colors.primary if image.colors else None
+            self.secondary_color = image.colors.secondary if image.colors else None
+            self.logo_base64 = image.logo
+        else:
+            self.generate_image = True
+            self.image_type = None
+            self.shape = None
+            self.border_color = None
+            self.border_width = None
+            self.primary_color = None
+            self.secondary_color = None
+            self.logo_base64 = None
+
+        # Skills fields
+        self.enable_skill_extraction = request.skills.enabled if request.skills else False
+
+        # Other fields (not in new schema, set defaults)
+        self.context_length = None
+
+
+def decode_logo_base64(logo_base64: Optional[str]) -> Optional[bytes]:
+    """Decode base64 logo string to bytes"""
+    if not logo_base64:
+        return None
+    try:
+        return base64.b64decode(logo_base64)
+    except Exception as e:
+        logger.warning(f"Failed to decode logo base64: {e}")
+        return None
 
 
 @router.post("/generate-badge-suggestions", response_model=BadgeResponse)
@@ -533,8 +595,8 @@ async def generate_badge_stream(request: GenerateBadgeRequest):
         badge_params = get_badge_configuration(request)
         
         from app.services.text_processor import process_course_input
-        processed_content = process_course_input(request.course_input)
-        
+        processed_content = process_course_input(req.course_input)
+
         # Build user content - Modelfile handles system instructions
         user_content = f"""Course Content: {processed_content}
 
