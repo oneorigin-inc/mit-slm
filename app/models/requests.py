@@ -1,6 +1,37 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any, Literal
 
+# New nested models for structured request
+class BadgeConfiguration(BaseModel):
+    badge_style: str = Field(default="", description="Style of badge generation")
+    badge_tone: str = Field(default="", description="Tone for badge content")
+    criterion_style: str = Field(default="", description="Style for criteria generation")
+    badge_level: str = Field(default="", description="Badge difficulty level")
+    institution: str = Field(default="", description="Issuing institution name")
+    institute_url: str = Field(default="", description="URL of the issuing institution")
+    custom_instructions: str = Field(default="", description="Additional custom requirements")
+
+class ImageConfiguration(BaseModel):
+    image_type: str = Field(default="", description="Force image type: 'text_overlay' or 'icon_based'. If empty, randomly selected")
+    border_color: str = Field(default="", description="Border color hex code (e.g., '#000000')")
+    border_width: Optional[int] = Field(default=None, description="Border width in pixels (e.g., 6)")
+    primary_color: str = Field(default="", description="Primary color hex code for badge (e.g., '#A31F34')")
+    secondary_color: str = Field(default="", description="Secondary color hex code for badge (e.g., '#8A8B8C')")
+    shape: str = Field(default="", description="Badge shape: 'hexagon', 'circle', or 'rounded_rect'")
+    logo: str = Field(default="", description="Base64 encoded logo image")
+
+class ImageGeneration(BaseModel):
+    enable_image_generation: bool = Field(default=False, description="Enable image generation for badge")
+    image_configuration: ImageConfiguration
+
+class GenerateBadgeRequest(BaseModel):
+    course_input: str = Field(..., description="Course content or description to generate badge from")
+    badge_configuration: BadgeConfiguration
+    enable_skill_extraction: bool = Field(default=False, description="Enable LAiSER skill extraction")
+    context_length: Optional[int] = Field(default=None, description="Context length override (tokens)")
+    image_generation: ImageGeneration
+
+# Legacy model for backward compatibility with internal services
 class BadgeRequest(BaseModel):
     course_input: str = Field(..., description="Course content or description to generate badge from. Can be multiple courses separated by newlines, semicolons, or 'and'")
     badge_style: str = Field(default="", description="Style of badge generation")

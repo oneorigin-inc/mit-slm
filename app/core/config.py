@@ -23,11 +23,11 @@ class Settings(BaseSettings):
         "stop": ["<|end|>", "}\n\n"]
     }
     
-    # Asset paths
-    ASSETS_PATH: str = "assets/"
-    ICONS_PATH: str = "assets/icons/"
-    LOGOS_PATH: str = "assets/logos/"
-    FONTS_PATH: str = "assets/fonts/"
+    # Asset paths - COMMENTED OUT (moved to external image service)
+    # ASSETS_PATH: str = "assets/"
+    # ICONS_PATH: str = "assets/icons/"
+    # LOGOS_PATH: str = "assets/logos/"
+    # FONTS_PATH: str = "assets/fonts/"
     
     # NLTK Configuration
     NLTK_AVAILABLE: bool = True

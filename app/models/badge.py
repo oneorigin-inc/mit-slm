@@ -13,4 +13,7 @@ class BadgeResponse(BaseModel):
     badge_id: str
     metrics: Optional[Dict[str, Any]] = None
     skills: Optional[List[Dict[str, Any]]] = None
+    badge_configuration: Optional[Dict[str, Any]] = None
+    enable_image_generation: bool = False
+    enable_skill_extraction: bool = False
 

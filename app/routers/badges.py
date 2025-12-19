@@ -11,19 +11,21 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ValidationError
 import uuid
 
-from app.models.requests import BadgeRequest, RegenerationRequest, AppendDataRequest, FieldRegenerateRequest
+from app.models.requests import BadgeRequest, RegenerationRequest, AppendDataRequest, FieldRegenerateRequest, GenerateBadgeRequest
 from app.models.badge import BadgeResponse, BadgeValidated
 from app.services.badge_generator import (
     generate_badge_metadata_async,
     generate_badge_metadata_stream_async,
-    get_random_parameters,
+    get_badge_configuration,
     apply_regeneration_overrides,
     optimize_badge_text,
     extract_json_from_response
 )
-from app.services.image_client import generate_badge_with_text, generate_badge_with_icon
+# OLD: Complex local image generation - now handled by external service
+# from app.services.image_client import generate_badge_with_text, generate_badge_with_icon
+# from app.utils.icon_matcher import get_icon_suggestions_for_badge
+from app.services.badge_image_client import call_badge_image_service
 from app.services.text_processor import process_course_input
-from app.utils.icon_matcher import get_icon_suggestions_for_badge
 from app.core.config import settings
 from app.services.skill_extractor import skill_service
 
@@ -46,145 +48,166 @@ def handle_error(error: Exception, operation: str, request_id: Optional[str] = N
 
 
 @router.post("/generate-badge-suggestions", response_model=BadgeResponse)
-async def generate_badge(
-    course_input: str = Form(...),
-    badge_style: str = Form(""),
-    badge_tone: str = Form(""),
-    criterion_style: str = Form(""),
-    custom_instructions: Optional[str] = Form(None),
-    badge_level: str = Form(""),
-    institution: Optional[str] = Form(None),
-    institute_url: Optional[str] = Form(None),
-    context_length: Optional[int] = Form(None),
-    enable_skill_extraction: bool = Form(False),
-    image_type: Optional[str] = Form(None),
-    primary_color: Optional[str] = Form(None),
-    secondary_color: Optional[str] = Form(None),
-    border_color: Optional[str] = Form(None),
-    border_width: Optional[int] = Form(None),
-    shape: Optional[str] = Form(None),
-    logo: Optional[UploadFile] = File(None)
-):
-    """Generate a single badge with random parameter selection (multipart form-data)"""
+async def generate_badge(request: GenerateBadgeRequest):
+    """
+    Generate badge suggestions through SLM.
+    Optionally generate badge image if enable_image_generation is true.
+    """
     start_time = time.time()
-
-    # Read logo bytes if provided
-    logo_bytes = None
-    if logo and logo.filename:
-        logo_bytes = await logo.read()
-
-    # Construct BadgeRequest from form data for compatibility with existing code
-    request = BadgeRequest(
-        course_input=course_input,
-        badge_style=badge_style,
-        badge_tone=badge_tone,
-        criterion_style=criterion_style,
-        custom_instructions=custom_instructions,
-        badge_level=badge_level,
-        institution=institution,
-        institute_url=institute_url,
-        context_length=context_length,
-        enable_skill_extraction=enable_skill_extraction,
-        image_type=image_type,
-        primary_color=primary_color,
-        secondary_color=secondary_color,
-        border_color=border_color,
-        border_width=border_width,
-        shape=shape
-    )
+    badge_id = str(uuid.uuid4())
 
     try:
+        # ============================================================================
+        # SECTION 1: Badge Metadata Generation (Primary Job - Always runs)
+        # ============================================================================
+        logger.info(f"Starting badge metadata generation for badge {badge_id}")
+        
         # Generate badge metadata with random parameters
         badge_json = await generate_badge_metadata_async(request)
 
+        # Validate badge data
         try:
             validated = BadgeValidated(
                 badge_name=badge_json.get("badge_name", ""),
                 badge_description=badge_json.get("badge_description", ""),
-                criteria=badge_json.get("criteria", {}),  # This already contains {"narrative": "string"}
+                criteria=badge_json.get("criteria", {}),
                 raw_model_output=badge_json.get("raw_model_output", "")
             )
         except ValidationError as ve:
             logger.warning("Badge validation failed: %s", ve)
             raise HTTPException(status_code=502, detail=f"Badge schema validation error: {ve}")
 
-        # Build custom colors if provided in request
-        custom_colors = None
-        if request.primary_color or request.secondary_color:
-            custom_colors = {}
-            if request.primary_color:
-                custom_colors["primary"] = request.primary_color
-            if request.secondary_color:
-                custom_colors["secondary"] = request.secondary_color
-
-        # Generate image configuration - respect request.image_type if provided
-        if request.image_type and request.image_type in ["text_overlay", "icon_based"]:
-            image_type_selected = request.image_type
-        else:
-            image_type_selected = random.choice(["text_overlay", "text_overlay"])
-        logger.info(f"Selected image type: {image_type_selected}")
-
-        if image_type_selected == "icon_based":
-            icon_suggestions = await get_icon_suggestions_for_badge(
-                badge_name=validated.badge_name,
-                badge_description=validated.badge_description,
-                custom_instructions=request.custom_instructions or "",
-                top_k=3
-            )
-
-            # Extract icon name from suggestions
-            icon_name = icon_suggestions.get('suggested_icon', {}).get('name', 'trophy.png')
-
-            image_base64, image_config = await generate_badge_with_icon(
-                icon_name=icon_name,
-                colors=custom_colors
-            )
-
-        else:  # text_overlay
-            optimized_text = await optimize_badge_text({
-                "badge_name": validated.badge_name,
-                "badge_description": validated.badge_description,
-                "institution": request.institution or ""
-            })
-
-            image_base64, image_config = await generate_badge_with_text(
-                short_title=optimized_text.get("short_title", validated.badge_name),
-                achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
-                logo_bytes=logo_bytes,
-                colors=custom_colors,
-                border_color=request.border_color,
-                border_width=request.border_width,
-                shape=request.shape
-            )
-
-        # Generate badge ID
-        badge_id = str(uuid.uuid4())
-
         # Extract metrics
         metrics = badge_json.get("metrics", {})
+        
+        logger.info(f"Badge metadata generated successfully: '{validated.badge_name}'")
 
-        # Transform to new JSON schema format
-        result = BadgeResponse(
-            credentialSubject={
-                "achievement": {
-                    "criteria": validated.criteria,  # This is already {"narrative": "string"} format
-                    "description": validated.badge_description,
-                    "image": {
-                        "id": f"https://example.com/achievements/badge_{badge_id}/image",
-                        "image_base64": image_base64
-                    },
-                    "name": validated.badge_name
-                }
-            },
-            imageConfig=image_config,
-            badge_id=badge_id,
-            metrics=metrics
-        )
+        # ============================================================================
+        # SECTION 2: Image Generation (Conditional - Calls External Service)
+        # ============================================================================
+        image_base64 = None
+        image_config = None
+        image_type_selected = None
+        
+        if request.image_generation.enable_image_generation:
+            logger.info(f"Image generation enabled for badge {badge_id}")
+            
+            img_config = request.image_generation.image_configuration
+            
+            # Determine image type (local decision)
+            if img_config.image_type and img_config.image_type in ["text_overlay", "icon_based"]:
+                image_type_selected = img_config.image_type
+            else:
+                image_type_selected = random.choice(["text_overlay", "text_overlay"])
+            
+            logger.info(f"Selected image type: {image_type_selected}")
 
-        # Extract skills using LAiSER if enabled in request
+            # Generate image based on type
+            if image_type_selected == "text_overlay":
+                # Use SLM to optimize text for image overlay
+                optimized_text = await optimize_badge_text({
+                    "badge_name": validated.badge_name,
+                    "badge_description": validated.badge_description,
+                    "institution": request.badge_configuration.institution or ""
+                })
+                
+                # Call external service with optimized text
+                image_base64, image_config = await call_badge_image_service(
+                    image_type="text_overlay",
+                    badge_name=validated.badge_name,
+                    badge_description=validated.badge_description,
+                    short_title=optimized_text.get("short_title", validated.badge_name),
+                    achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
+                    institution=request.badge_configuration.institution,
+                    institute_url=request.badge_configuration.institute_url,
+                    image_configuration=img_config
+                )
+            
+            else:  # icon_based
+                # Call external service for icon-based badge (icon matching done externally)
+                image_base64, image_config = await call_badge_image_service(
+                    image_type="icon_based",
+                    badge_name=validated.badge_name,
+                    badge_description=validated.badge_description,
+                    institution=request.badge_configuration.institution,
+                    institute_url=request.badge_configuration.institute_url,
+                    image_configuration=img_config
+                )
+            
+            logger.info(f"Image generated successfully for badge {badge_id}")
+        else:
+            logger.info(f"Image generation disabled for badge {badge_id}")
+        
+        # ============================================================================
+        # OLD IMAGE GENERATION CODE (Commented out - now handled by external service)
+        # ============================================================================
+        # img_config = request.image_generation.image_configuration
+        # 
+        # # Build custom colors if provided
+        # custom_colors = None
+        # if img_config.primary_color or img_config.secondary_color:
+        #     custom_colors = {}
+        #     if img_config.primary_color:
+        #         custom_colors["primary"] = img_config.primary_color
+        #     if img_config.secondary_color:
+        #         custom_colors["secondary"] = img_config.secondary_color
+        #
+        # # Scrape institution colors if URL provided and no custom colors
+        # if not custom_colors and request.badge_configuration.institute_url:
+        #     try:
+        #         from app.services.web_color_scraper import scrape_institution_colors_async
+        #         institution_colors = await scrape_institution_colors_async(request.badge_configuration.institute_url)
+        #         custom_colors = institution_colors
+        #         logger.info(f"Scraped colors from {request.badge_configuration.institute_url}: {institution_colors}")
+        #     except Exception as color_error:
+        #         logger.warning(f"Failed to scrape colors from {request.badge_configuration.institute_url}: {color_error}")
+        #
+        # # Decode logo if provided
+        # logo_bytes = None
+        # if img_config.logo:
+        #     try:
+        #         import base64
+        #         logo_bytes = base64.b64decode(img_config.logo)
+        #     except Exception as e:
+        #         logger.warning(f"Failed to decode logo: {e}")
+        #
+        # # Generate image based on type
+        # if image_type_selected == "icon_based":
+        #     icon_suggestions = await get_icon_suggestions_for_badge(
+        #         badge_name=validated.badge_name,
+        #         badge_description=validated.badge_description,
+        #         custom_instructions=request.badge_configuration.custom_instructions or "",
+        #         top_k=3
+        #     )
+        #     icon_name = icon_suggestions.get('suggested_icon', {}).get('name', 'trophy.png')
+        #     image_base64, image_config = await generate_badge_with_icon(
+        #         icon_name=icon_name,
+        #         colors=custom_colors
+        #     )
+        # else:  # text_overlay
+        #     optimized_text = await optimize_badge_text({
+        #         "badge_name": validated.badge_name,
+        #         "badge_description": validated.badge_description,
+        #         "institution": request.badge_configuration.institution or ""
+        #     })
+        #     image_base64, image_config = await generate_badge_with_text(
+        #         short_title=optimized_text.get("short_title", validated.badge_name),
+        #         achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
+        #         logo_bytes=logo_bytes,
+        #         colors=custom_colors,
+        #         border_color=img_config.border_color if img_config.border_color else None,
+        #         border_width=img_config.border_width,
+        #         shape=img_config.shape if img_config.shape else None
+        #     )
+
+        # ============================================================================
+        # SECTION 3: Skill Extraction (Conditional)
+        # ============================================================================
+        extracted_skills = None
+        
         if request.enable_skill_extraction and skill_service.is_ready():
+            logger.info(f"Skill extraction enabled for badge {badge_id}")
             try:
-                # Combine course input and badge description for comprehensive skill extraction
                 skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
 
                 extracted_skills = skill_service.extract_skills(
@@ -192,14 +215,45 @@ async def generate_badge(
                     top_k=settings.LAISER_TOP_K
                 )
 
-                result.skills = extracted_skills
                 logger.info(f"Extracted {len(extracted_skills)} skills for badge {badge_id}")
 
             except Exception as e:
                 logger.warning(f"Skill extraction failed for badge {badge_id}: {e}")
-                result.skills = []
+                extracted_skills = []
         else:
             logger.debug("Skill extraction disabled or service not ready")
+
+        # ============================================================================
+        # SECTION 4: Build Response
+        # ============================================================================
+        
+        # Build achievement object
+        achievement = {
+            "criteria": validated.criteria,
+            "description": validated.badge_description,
+            "name": validated.badge_name
+        }
+        
+        # Add image only if generated
+        if image_base64:
+            achievement["image"] = {
+                "id": f"https://example.com/achievements/badge_{badge_id}/image",
+                "image_base64": image_base64
+            }
+        
+        # Build response
+        result = BadgeResponse(
+            credentialSubject={
+                "achievement": achievement
+            },
+            imageConfig=image_config,  # Will be None if image generation disabled
+            badge_id=badge_id,
+            metrics=metrics,
+            skills=extracted_skills,
+            badge_configuration=request.badge_configuration.dict(),  # Include badge configuration in response
+            enable_image_generation=request.image_generation.enable_image_generation,
+            enable_skill_extraction=request.enable_skill_extraction
+        )
 
         # Store in history with the full result for editing capability
         history_entry = {
@@ -207,16 +261,16 @@ async def generate_badge(
             "timestamp": datetime.now().isoformat(),
             "course_input": (request.course_input[:100] + "...") if len(request.course_input) > 100 else request.course_input,
             "processed_course_input": badge_json.get("processed_course_input", request.course_input),
-            "user_badge_style": request.badge_style,
-            "user_badge_tone": request.badge_tone,
-            "user_criterion_style": request.criterion_style,
-            "user_badge_level": request.badge_level,
-            "custom_instructions": request.custom_instructions,
-            "institution": request.institution,
-            "selected_image_type": image_type,
+            "user_badge_style": request.badge_configuration.badge_style,
+            "user_badge_tone": request.badge_configuration.badge_tone,
+            "user_criterion_style": request.badge_configuration.criterion_style,
+            "user_badge_level": request.badge_configuration.badge_level,
+            "custom_instructions": request.badge_configuration.custom_instructions,
+            "institution": request.badge_configuration.institution,
+            "selected_image_type": image_type_selected,
             "selected_parameters": badge_json.get("selected_parameters", {}),
             "badge_id": badge_id,
-            "result": result,  # Store the full result for editing
+            "result": result,
             "generation_time": time.time() - start_time,
             "metrics": metrics
         }
@@ -225,8 +279,8 @@ async def generate_badge(
         if len(badge_history) > 50:
             badge_history.pop(0)
 
-        selected_params = badge_json.get("selected_parameters", {})
-        logger.info(f"Generated badge ID {badge_id}: '{validated.badge_name}' with parameters: {selected_params}")
+        badge_params = badge_json.get("selected_parameters", {})
+        logger.info(f"Generated badge ID {badge_id}: '{validated.badge_name}' with parameters: {badge_params}")
         return result
 
     except HTTPException:
@@ -251,12 +305,12 @@ async def generate_badge(
 #             institution=request.institution
 #         )
 
-#         # Get current random parameters
-#         current_params = get_random_parameters(mock_request)
+#         # Get current badge configuration
+#         badge_params = get_badge_configuration(mock_request)
 
 #         # Apply regeneration overrides
 #         regeneration_map = {param: "true" for param in request.regenerate_parameters}
-#         updated_params = apply_regeneration_overrides(current_params, regeneration_map)
+#         updated_params = apply_regeneration_overrides(badge_params, regeneration_map)
 
 #         # Update mock request with new parameters
 #         mock_request.badge_style = updated_params['badge_style']
@@ -463,57 +517,20 @@ def _normalize_badge_json(badge_json: Dict[str, Any]) -> Dict[str, Any]:
     return badge_json
 
 @router.post("/generate-badge-suggestions/stream")
-async def generate_badge_stream(
-    course_input: str = Form(...),
-    badge_style: str = Form(""),
-    badge_tone: str = Form(""),
-    criterion_style: str = Form(""),
-    custom_instructions: Optional[str] = Form(None),
-    badge_level: str = Form(""),
-    institution: Optional[str] = Form(None),
-    institute_url: Optional[str] = Form(None),
-    context_length: Optional[int] = Form(None),
-    enable_skill_extraction: bool = Form(False),
-    image_type: Optional[str] = Form(None),
-    primary_color: Optional[str] = Form(None),
-    secondary_color: Optional[str] = Form(None),
-    border_color: Optional[str] = Form(None),
-    border_width: Optional[int] = Form(None),
-    shape: Optional[str] = Form(None),
-    logo: Optional[UploadFile] = File(None)
-):
-    """Generate badge suggestions with streaming response (multipart form-data)"""
+async def generate_badge_stream(request: GenerateBadgeRequest):
+    """
+    Generate badge suggestions with streaming response.
+    Optionally generate badge image if enable_image_generation is true.
+    """
     start_time = time.time()
     request_id = None
     badge_id = str(uuid.uuid4())
 
-    # Read logo bytes if provided
-    logo_bytes = None
-    if logo and logo.filename:
-        logo_bytes = await logo.read()
-
-    # Construct BadgeRequest from form data for compatibility with existing code
-    request = BadgeRequest(
-        course_input=course_input,
-        badge_style=badge_style,
-        badge_tone=badge_tone,
-        criterion_style=criterion_style,
-        custom_instructions=custom_instructions,
-        badge_level=badge_level,
-        institution=institution,
-        institute_url=institute_url,
-        context_length=context_length,
-        enable_skill_extraction=enable_skill_extraction,
-        image_type=image_type,
-        primary_color=primary_color,
-        secondary_color=secondary_color,
-        border_color=border_color,
-        border_width=border_width,
-        shape=shape
-    )
-
     try:
-        current_params = get_random_parameters(request)
+        # ============================================================================
+        # SECTION 1: Badge Metadata Generation (Primary Job - Always runs)
+        # ============================================================================
+        badge_params = get_badge_configuration(request)
         
         from app.services.text_processor import process_course_input
         processed_content = process_course_input(request.course_input)
@@ -522,16 +539,16 @@ async def generate_badge_stream(
         user_content = f"""Course Content: {processed_content}
 
 Parameters:
-- Style: {settings.STYLE_DESCRIPTIONS.get(current_params['badge_style'])}
-- Tone: {settings.TONE_DESCRIPTIONS.get(current_params['badge_tone'])}
-- Level: {settings.LEVEL_DESCRIPTIONS.get(current_params['badge_level'])}
-- Criterion Style: {settings.CRITERION_TEMPLATES.get(current_params['criterion_style'])}"""
+- Style: {settings.STYLE_DESCRIPTIONS.get(badge_params['badge_style'])}
+- Tone: {settings.TONE_DESCRIPTIONS.get(badge_params['badge_tone'])}
+- Level: {settings.LEVEL_DESCRIPTIONS.get(badge_params['badge_level'])}
+- Criterion Style: {settings.CRITERION_TEMPLATES.get(badge_params['criterion_style'])}"""
 
-        if request.institution:
-            user_content += f"\n- Institution: {request.institution}, Highlight institutional credibility and authority in badge name and badge description briefly."
+        if request.badge_configuration.institution:
+            user_content += f"\n- Institution: {request.badge_configuration.institution}, Highlight institutional credibility and authority in badge name and badge description briefly."
 
-        if request.custom_instructions:
-            user_content += f"\n- Special Instructions: {request.custom_instructions}, "
+        if request.badge_configuration.custom_instructions:
+            user_content += f"\n- Special Instructions: {request.badge_configuration.custom_instructions}, "
 
         user_content += '\n\nGenerate badge JSON with exact schema {"badge_name": "string", "badge_description": "string", "criteria": {"narrative": "string"}}:'
 
@@ -544,7 +561,7 @@ Parameters:
         MODEL_CONFIG = settings.MODEL_CONFIG
 
         # Get user provided context length or fallback to config default
-        context_length = getattr(request, "context_length", None) or MODEL_CONFIG.get("num_ctx", 2048)
+        context_length = request.context_length or MODEL_CONFIG.get("num_ctx", 2048)
         
         async def generate_stream_response():
             nonlocal request_id
@@ -612,7 +629,7 @@ Parameters:
                                 return
                             
                             badge_json = _normalize_badge_json(badge_json)
-                            badge_json["selected_parameters"] = current_params
+                            badge_json["selected_parameters"] = badge_params
                             badge_json["processed_course_input"] = processed_content
 
                             # Validate badge data
@@ -633,99 +650,112 @@ Parameters:
                                 yield format_streaming_response(error_chunk)
                                 return
 
-                            # Build custom colors if provided in request
-                            custom_colors = None
-                            if request.primary_color or request.secondary_color:
-                                custom_colors = {}
-                                if request.primary_color:
-                                    custom_colors["primary"] = request.primary_color
-                                if request.secondary_color:
-                                    custom_colors["secondary"] = request.secondary_color
+                            # ============================================================================
+                            # SECTION 2: Image Generation (Conditional - Calls External Service)
+                            # ============================================================================
+                            image_base64 = None
+                            image_config = None
+                            image_type = None
+                            
+                            if request.image_generation.enable_image_generation:
+                                logger.info(f"Image generation enabled for streaming badge {badge_id}")
+                                
+                                img_config = request.image_generation.image_configuration
+                                
+                                # Determine image type (local decision)
+                                if img_config.image_type and img_config.image_type in ["text_overlay", "icon_based"]:
+                                    image_type = img_config.image_type
+                                else:
+                                    image_type = random.choice(["text_overlay", "text_overlay"])
+                                
+                                logger.info(f"Selected image type: {image_type}")
 
-                            # Scrape institution colors if URL provided and no custom colors
-                            institution_colors = None
-                            if not custom_colors and request.institute_url:
+                                # Generate image based on type
+                                if image_type == "text_overlay":
+                                    # Use SLM to optimize text for image overlay
+                                    optimized_text = await optimize_badge_text({
+                                        "badge_name": validated.badge_name,
+                                        "badge_description": validated.badge_description,
+                                        "institution": request.badge_configuration.institution or ""
+                                    })
+                                    
+                                    # Call external service with optimized text
+                                    image_base64, image_config = await call_badge_image_service(
+                                        image_type="text_overlay",
+                                        badge_name=validated.badge_name,
+                                        badge_description=validated.badge_description,
+                                        short_title=optimized_text.get("short_title", validated.badge_name),
+                                        achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
+                                        institution=request.badge_configuration.institution,
+                                        institute_url=request.badge_configuration.institute_url,
+                                        image_configuration=img_config
+                                    )
+                                
+                                else:  # icon_based
+                                    # Call external service for icon-based badge (icon matching done externally)
+                                    image_base64, image_config = await call_badge_image_service(
+                                        image_type="icon_based",
+                                        badge_name=validated.badge_name,
+                                        badge_description=validated.badge_description,
+                                        institution=request.badge_configuration.institution,
+                                        institute_url=request.badge_configuration.institute_url,
+                                        image_configuration=img_config
+                                    )
+                                
+                                # Log image generation summary
                                 try:
-                                    from app.services.web_color_scraper import scrape_institution_colors_async
-                                    institution_colors = await scrape_institution_colors_async(request.institute_url)
-                                    logger.info(f"Scraped colors from {request.institute_url}: {institution_colors}")
-                                except Exception as color_error:
-                                    logger.warning(f"Failed to scrape colors from {request.institute_url}: {color_error}")
-
-                            # Use custom colors if provided, otherwise use scraped colors
-                            colors_to_use = custom_colors if custom_colors else institution_colors
-
-                            # Generate image configuration - respect request.image_type if provided
-                            if request.image_type and request.image_type in ["text_overlay", "icon_based"]:
-                                image_type = request.image_type
+                                    preview = (image_base64 or "")[:48]
+                                    logger.info(
+                                        "Badge image generated | base64_len=%s preview=%s...",
+                                        len(image_base64) if isinstance(image_base64, str) else 0,
+                                        preview
+                                    )
+                                except Exception:
+                                    pass
                             else:
-                                image_type = random.choice(["text_overlay", "text_overlay"])
-                            logger.info(f"Selected image type: {image_type}")
+                                logger.info(f"Image generation disabled for streaming badge {badge_id}")
+                            
+                            # ============================================================================
+                            # OLD IMAGE GENERATION CODE (Commented out - now handled by external service)
+                            # ============================================================================
+                            # img_config = request.image_generation.image_configuration
+                            # custom_colors = None
+                            # if img_config.primary_color or img_config.secondary_color:
+                            #     custom_colors = {}
+                            #     if img_config.primary_color:
+                            #         custom_colors["primary"] = img_config.primary_color
+                            #     if img_config.secondary_color:
+                            #         custom_colors["secondary"] = img_config.secondary_color
+                            # if not custom_colors and request.badge_configuration.institute_url:
+                            #     try:
+                            #         from app.services.web_color_scraper import scrape_institution_colors_async
+                            #         institution_colors = await scrape_institution_colors_async(request.badge_configuration.institute_url)
+                            #         custom_colors = institution_colors
+                            #     except Exception as color_error:
+                            #         logger.warning(f"Failed to scrape colors: {color_error}")
+                            # logo_bytes = None
+                            # if img_config.logo:
+                            #     try:
+                            #         import base64
+                            #         logo_bytes = base64.b64decode(img_config.logo)
+                            #     except Exception as e:
+                            #         logger.warning(f"Failed to decode logo: {e}")
+                            # if image_type == "icon_based":
+                            #     icon_suggestions_result = await get_icon_suggestions_for_badge(...)
+                            #     icon_name = icon_suggestions_result.get('suggested_icon', {}).get('name', 'trophy.png')
+                            #     image_base64, image_config = await generate_badge_with_icon(icon_name=icon_name, colors=custom_colors)
+                            # else:  # text_overlay
+                            #     optimized_text = await optimize_badge_text(...)
+                            #     image_base64, image_config = await generate_badge_with_text(...)
 
-                            if image_type == "icon_based":
-                                icon_suggestions_result = await get_icon_suggestions_for_badge(
-                                    badge_name=validated.badge_name,
-                                    badge_description=validated.badge_description,
-                                    custom_instructions=request.custom_instructions or "",
-                                    top_k=3
-                                )
-
-                                # Extract icon name from suggestions
-                                icon_name = icon_suggestions_result.get('suggested_icon', {}).get('name', 'trophy.png')
-
-                                image_base64, image_config = await generate_badge_with_icon(
-                                    icon_name=icon_name,
-                                    colors=colors_to_use
-                                )
-
-                            else:  # text_overlay
-                                optimized_text = await optimize_badge_text({
-                                    "badge_name": validated.badge_name,
-                                    "badge_description": validated.badge_description,
-                                    "institution": request.institution or ""
-                                })
-
-                                image_base64, image_config = await generate_badge_with_text(
-                                    short_title=optimized_text.get("short_title", validated.badge_name),
-                                    achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
-                                    logo_bytes=logo_bytes,
-                                    colors=colors_to_use,
-                                    border_color=request.border_color,
-                                    border_width=request.border_width,
-                                    shape=request.shape
-                                )
-                            # Log image generation summary (do not log full base64)
-                            try:
-                                preview = (image_base64 or "")[:48]
-                                logger.info(
-                                    "Badge image generated | base64_len=%s preview=%s...",
-                                    len(image_base64) if isinstance(image_base64, str) else 0,
-                                    preview
-                                )
-                            except Exception:
-                                pass
-
-                            # Transform to new JSON schema format
-                            result = BadgeResponse(
-                                credentialSubject={
-                                    "achievement": {
-                                        "criteria": validated.criteria,
-                                        "description": validated.badge_description,
-                                        "image": {
-                                            "id": f"https://example.com/achievements/badge_{badge_id}/image",
-                                            "image_base64": image_base64
-                                        },
-                                        "name": validated.badge_name
-                                    }
-                                },
-                                imageConfig=image_config,
-                                badge_id=badge_id
-                            )
-
-                            # Extract skills using LAiSER if enabled in request
+                            # ============================================================================
+                            # SECTION 3: Skill Extraction (Conditional)
+                            # ============================================================================
+                            extracted_skills = None
+                            
                             if request.enable_skill_extraction and skill_service.is_ready():
+                                logger.info(f"Skill extraction enabled for streaming badge {badge_id}")
                                 try:
-                                    # Combine course input and badge description for comprehensive skill extraction
                                     skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
 
                                     extracted_skills = skill_service.extract_skills(
@@ -733,14 +763,45 @@ Parameters:
                                         top_k=settings.LAISER_TOP_K
                                     )
 
-                                    result.skills = extracted_skills
                                     logger.info(f"Extracted {len(extracted_skills)} skills for streaming badge {badge_id}")
 
                                 except Exception as e:
                                     logger.warning(f"Skill extraction failed for streaming badge {badge_id}: {e}")
-                                    result.skills = []
+                                    extracted_skills = []
                             else:
                                 logger.debug("Skill extraction disabled or service not ready (streaming)")
+
+                            # ============================================================================
+                            # SECTION 4: Build Response
+                            # ============================================================================
+                            
+                            # Build achievement object
+                            achievement = {
+                                "criteria": validated.criteria,
+                                "description": validated.badge_description,
+                                "name": validated.badge_name
+                            }
+                            
+                            # Add image only if generated
+                            if image_base64:
+                                achievement["image"] = {
+                                    "id": f"https://example.com/achievements/badge_{badge_id}/image",
+                                    "image_base64": image_base64
+                                }
+                            
+                            # Build response
+                            result = BadgeResponse(
+                                credentialSubject={
+                                    "achievement": achievement
+                                },
+                                imageConfig=image_config,  # Will be None if image generation disabled
+                                badge_id=badge_id,
+                                metrics=token_usage_data or {},
+                                skills=extracted_skills,
+                                badge_configuration=request.badge_configuration.dict(),  # Include badge configuration in response
+                                enable_image_generation=request.image_generation.enable_image_generation,
+                                enable_skill_extraction=request.enable_skill_extraction
+                            )
 
                             # Store in history
                             history_entry = {
@@ -748,12 +809,12 @@ Parameters:
                                 "timestamp": datetime.now().isoformat(),
                                 "course_input": (request.course_input[:100] + "...") if len(request.course_input) > 100 else request.course_input,
                                 "processed_course_input": badge_json.get("processed_course_input", request.course_input),
-                                "user_badge_style": request.badge_style,
-                                "user_badge_tone": request.badge_tone,
-                                "user_criterion_style": request.criterion_style,
-                                "user_badge_level": request.badge_level,
-                                "custom_instructions": request.custom_instructions,
-                                "institution": request.institution,
+                                "user_badge_style": request.badge_configuration.badge_style,
+                                "user_badge_tone": request.badge_configuration.badge_tone,
+                                "user_criterion_style": request.badge_configuration.criterion_style,
+                                "user_badge_level": request.badge_configuration.badge_level,
+                                "custom_instructions": request.badge_configuration.custom_instructions,
+                                "institution": request.badge_configuration.institution,
                                 "selected_image_type": image_type,
                                 "selected_parameters": badge_json.get("selected_parameters", {}),
                                 "badge_id": badge_id,
@@ -811,8 +872,8 @@ Parameters:
                                 }
                                 yield format_streaming_response(final_chunk)
                             
-                            selected_params = badge_json.get("selected_parameters", {})
-                            logger.info(f"Generated badge ID {badge_id}: '{validated.badge_name}' with parameters: {selected_params}")
+                            badge_params_used = badge_json.get("selected_parameters", {})
+                            logger.info(f"Generated badge ID {badge_id}: '{validated.badge_name}' with parameters: {badge_params_used}")
                             
                         except Exception as e:
                             logger.error(f"Error processing final response: {e}", exc_info=True)
@@ -881,8 +942,8 @@ class BadgeRegenerateRequest(BaseModel):
 #         course_input = last_badge_entry.get("course_input", "")
 #         processed_content = last_badge_entry.get("processed_course_input", course_input)
         
-#         # Get current parameters from previous badge
-#         current_params = last_badge_entry.get("selected_parameters", {})
+#         # Get current badge parameters from previous badge
+#         badge_params = last_badge_entry.get("selected_parameters", {})
         
 #         # Extract previous badge achievement data
 #         previous_badge_dict: Dict[str, Any] = {}
@@ -915,10 +976,10 @@ class BadgeRegenerateRequest(BaseModel):
 # Custom Instructions: {request.custom_instructions}
 
 # Parameters:
-# - Style: {settings.STYLE_DESCRIPTIONS.get(current_params.get('badge_style', 'professional'))}
-# - Tone: {settings.TONE_DESCRIPTIONS.get(current_params.get('badge_tone', 'formal'))}
-# - Level: {settings.LEVEL_DESCRIPTIONS.get(current_params.get('badge_level', 'intermediate'))}
-# - Criterion Style: {settings.CRITERION_TEMPLATES.get(current_params.get('criterion_style', 'descriptive'))}"""
+# - Style: {settings.STYLE_DESCRIPTIONS.get(badge_params.get('badge_style', 'professional'))}
+# - Tone: {settings.TONE_DESCRIPTIONS.get(badge_params.get('badge_tone', 'formal'))}
+# - Level: {settings.LEVEL_DESCRIPTIONS.get(badge_params.get('badge_level', 'intermediate'))}
+# - Criterion Style: {settings.CRITERION_TEMPLATES.get(badge_params.get('criterion_style', 'descriptive'))}"""
 
 #         institution = last_badge_entry.get("institution") or request.institution
 #         if institution:
@@ -1001,7 +1062,7 @@ class BadgeRegenerateRequest(BaseModel):
 #                             regenerated_json = _normalize_badge_json(regenerated_json)
                             
 #                             # Use regenerated data directly
-#                             regenerated_json["selected_parameters"] = current_params
+#                             regenerated_json["selected_parameters"] = badge_params
 #                             regenerated_json["processed_course_input"] = processed_content
 
 #                             # Validate regenerated badge data
