@@ -595,7 +595,7 @@ async def generate_badge_stream(request: GenerateBadgeRequest):
         badge_params = get_badge_configuration(request)
         
         from app.services.text_processor import process_course_input
-        processed_content = process_course_input(req.course_input)
+        processed_content = process_course_input(request.course_input)
 
         # Build user content - Modelfile handles system instructions
         user_content = f"""Course Content: {processed_content}

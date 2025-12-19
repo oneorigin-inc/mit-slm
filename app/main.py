@@ -47,11 +47,11 @@ async def log_requests_middleware(request: Request, call_next):
     logger.info(
         f"""Network incoming logs >>>
       >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-      req.method          {request.method}
-      req.path            {request.url.path}
-      req.headers         {json.dumps(headers_dict, indent=1)}
-      req.query           {json.dumps(query_dict, indent=1)}
-      req.body            {json.dumps(body, indent=1) if body else "{}"}
+      request.method          {request.method}
+      request.path            {request.url.path}
+      request.headers         {json.dumps(headers_dict, indent=1)}
+      request.query           {json.dumps(query_dict, indent=1)}
+      request.body            {json.dumps(body, indent=1) if body else "{}"}
       <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"""
     )
     
