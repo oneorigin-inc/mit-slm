@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ValidationError
 import uuid
 
-from app.models.requests import BadgeRequest, RegenerationRequest, AppendDataRequest, FieldRegenerateRequest, GenerateBadgeRequest
+from app.models.requests import BadgeRequest, RegenerationRequest, AppendDataRequest, FieldRegenerateRequest, GenerateBadgeRequest, ImageConfiguration
 from app.models.badge import BadgeResponse, BadgeValidated
 from app.services.badge_generator import (
     generate_badge_metadata_async,
@@ -155,6 +155,11 @@ async def generate_badge(request: GenerateBadgeRequest):
             logger.info(f"Image generation enabled for badge {badge_id}")
             
             img_config = request.image_generation.image_configuration
+            
+            # Validate image configuration is provided when generation is enabled
+            if not img_config:
+                logger.warning(f"Image generation enabled but no configuration provided for badge {badge_id}")
+                img_config = ImageConfiguration()  # Use defaults
             
             # Determine image type (local decision)
             if img_config.image_type and img_config.image_type in ["text_overlay", "icon_based"]:
@@ -723,6 +728,11 @@ Parameters:
                                 logger.info(f"Image generation enabled for streaming badge {badge_id}")
                                 
                                 img_config = request.image_generation.image_configuration
+                                
+                                # Validate image configuration is provided when generation is enabled
+                                if not img_config:
+                                    logger.warning(f"Image generation enabled but no configuration provided for streaming badge {badge_id}")
+                                    img_config = ImageConfiguration()  # Use defaults
                                 
                                 # Determine image type (local decision)
                                 if img_config.image_type and img_config.image_type in ["text_overlay", "icon_based"]:

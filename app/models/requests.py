@@ -183,7 +183,7 @@ class ImageConfiguration(BaseModel):
 
 class ImageGeneration(BaseModel):
     enable_image_generation: bool = Field(default=False, description="Enable image generation for badge")
-    image_configuration: ImageConfiguration
+    image_configuration: Optional[ImageConfiguration] = Field(default=None, description="Image configuration settings (only required when enable_image_generation is true)")
 
 class GenerateBadgeRequest(BaseModel):
     course_input: str = Field(..., description="Course content or description to generate badge from")
