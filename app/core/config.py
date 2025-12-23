@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     # Badge Image Service Configuration
     BADGE_IMAGE_SERVICE_URL: str = os.getenv("BADGE_IMAGE_SERVICE_URL", "http://localhost:3001")
 
+    # Logging Configuration
+    ENABLE_LOG_BASE64_DATA: bool = False
+
     # Model Configuration
     MODEL_CONFIG: Dict = {
         "temperature": 0.10,

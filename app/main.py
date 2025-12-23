@@ -9,12 +9,36 @@ from app.services.skill_extractor import skill_service
 import logging
 import json
 import time
+import copy
 
 logger = logging.getLogger(__name__)
 
 # ============================================================================
 # Request Logging Middleware
 # ============================================================================
+def _sanitize_body_for_logging(body: dict) -> dict:
+    """
+    Remove base64 encoded data from request body for cleaner logs.
+    Uses deep copy to avoid modifying the original request body.
+    Controlled by ENABLE_LOG_BASE64_DATA config flag.
+    """
+    # If base64 logging is enabled, return body as-is
+    if settings.ENABLE_LOG_BASE64_DATA:
+        return body
+    
+    # Deep copy to ensure we don't modify the original
+    sanitized = copy.deepcopy(body)
+    
+    # Remove logo from image_generation.image_configuration.logo
+    if "image_generation" in sanitized and isinstance(sanitized["image_generation"], dict):
+        img_gen = sanitized["image_generation"]
+        if "image_configuration" in img_gen and isinstance(img_gen["image_configuration"], dict):
+            img_config = img_gen["image_configuration"]
+            if "logo" in img_config and img_config["logo"]:
+                img_config["logo"] = "<base64_data_excluded_from_log>"
+    
+    return sanitized
+
 async def log_requests_middleware(request: Request, call_next):
     """
     Middleware to log all incoming API requests in a systematic format.
@@ -30,6 +54,9 @@ async def log_requests_middleware(request: Request, call_next):
             if body_bytes:
                 try:
                     body = json.loads(body_bytes.decode('utf-8'))
+                    # Remove base64 data from logs to keep them clean
+                    if isinstance(body, dict):
+                        body = _sanitize_body_for_logging(body)
                 except json.JSONDecodeError:
                     body = body_bytes.decode('utf-8', errors='ignore')
         except Exception as e:

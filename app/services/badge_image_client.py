@@ -6,6 +6,7 @@ import httpx
 import logging
 import json
 import time
+import copy
 from typing import Dict, Any, Optional, Tuple
 from app.core.config import settings
 
@@ -14,8 +15,19 @@ logger = logging.getLogger(__name__)
 
 def _log_outgoing_request(method: str, url: str, headers: Dict[str, Any], payload: Dict[str, Any]):
     """
-    Log outgoing API request in systematic format
+    Log outgoing API request in systematic format (excludes base64 data unless ENABLE_LOG_BASE64_DATA is True)
     """
+    # If base64 logging is enabled, log payload as-is
+    if settings.ENABLE_LOG_BASE64_DATA:
+        sanitized_payload = payload
+    else:
+        # Deep copy to avoid modifying the original payload
+        sanitized_payload = copy.deepcopy(payload)
+        if "image_configuration" in sanitized_payload and isinstance(sanitized_payload["image_configuration"], dict):
+            img_config = sanitized_payload["image_configuration"]
+            if "logo" in img_config and img_config["logo"]:
+                img_config["logo"] = "<base64_data_excluded_from_log>"
+    
     logger.info('--------------------------------------------------------------')
     logger.info(
         f"""Internal Service Call (Outgoing Request) >>>
@@ -24,22 +36,32 @@ def _log_outgoing_request(method: str, url: str, headers: Dict[str, Any], payloa
       method              {method}
       endpoint            {url}
       headers             {json.dumps(headers, indent=1)}
-      payload             {json.dumps(payload, indent=1)}
+      payload             {json.dumps(sanitized_payload, indent=1)}
       ######################################################"""
     )
 
 
 def _log_outgoing_response(status_code: int, response_time: float, response_body: Dict[str, Any]):
     """
-    Log outgoing API response in systematic format
+    Log outgoing API response in systematic format (excludes base64 data unless ENABLE_LOG_BASE64_DATA is True)
     """
+    # If base64 logging is enabled, log response as-is
+    if settings.ENABLE_LOG_BASE64_DATA:
+        sanitized_response = response_body if response_body else {}
+    else:
+        # Deep copy to avoid modifying the original response
+        sanitized_response = copy.deepcopy(response_body) if response_body else {}
+        if "data" in sanitized_response and isinstance(sanitized_response["data"], dict):
+            if "base64" in sanitized_response["data"] and sanitized_response["data"]["base64"]:
+                sanitized_response["data"]["base64"] = "<base64_data_excluded_from_log>"
+    
     logger.info(
         f"""Internal Service Call (Response Received) >>>
       ######################################################
       service             Badge Image Generation Service
       status_code         {status_code}
       response_time       {response_time:.4f}s
-      response_data       {json.dumps(response_body, indent=1)}
+      response_data       {json.dumps(sanitized_response, indent=1)}
       ######################################################"""
     )
     logger.info('--------------------------------------------------------------')
