@@ -180,6 +180,7 @@ class ImageConfiguration(BaseModel):
     secondary_color: str = Field(default="", description="Secondary color hex code for badge (e.g., '#8A8B8C')")
     shape: str = Field(default="", description="Badge shape: 'hexagon', 'circle', or 'rounded_rect'")
     logo: str = Field(default="", description="Base64 encoded logo image")
+    ribbon_type: str = Field(default="", description="Ribbon type: 'ribbon', 'ribbon_folded', 'none', or empty for random")
 
 class ImageGeneration(BaseModel):
     enable_image_generation: bool = Field(default=False, description="Enable image generation for badge")

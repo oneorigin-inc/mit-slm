@@ -154,9 +154,10 @@ async def _generate_text_badge(
                 "border_color": image_configuration.border_color or "",
                 "border_width": image_configuration.border_width if image_configuration.border_width else 0,
                 "shape": image_configuration.shape or "",
-                "logo": image_configuration.logo or ""
+                "logo": image_configuration.logo or "",
+                "ribbon_type": image_configuration.ribbon_type or ""
             }
-        
+
         url = f"{settings.BADGE_IMAGE_SERVICE_URL}/api/v1/badge/generate-with-text"
         
         # Log outgoing request
@@ -229,9 +230,10 @@ async def _generate_icon_badge(
                 "border_color": image_configuration.border_color or "",
                 "border_width": image_configuration.border_width if image_configuration.border_width else 0,
                 "shape": image_configuration.shape or "",
-                "logo": image_configuration.logo or ""
+                "logo": image_configuration.logo or "",
+                "ribbon_type": image_configuration.ribbon_type or ""
             }
-        
+
         url = f"{settings.BADGE_IMAGE_SERVICE_URL}/api/v1/badge/generate-with-icon"
         
         # Log outgoing request
