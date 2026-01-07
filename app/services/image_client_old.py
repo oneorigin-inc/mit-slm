@@ -4,22 +4,21 @@ Replaces the old local image_generator module
 """
 import httpx
 import logging
+import json
 from typing import Dict, Any, Optional, Tuple
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
-from typing import Optional, Tuple, Dict, Any
-import httpx
-import logging
-
-logger = logging.getLogger(__name__)
-
 async def generate_badge_with_text(
     short_title: str,
     achievement_phrase: str = "",
-    colors: Optional[dict] = None
+    colors: Optional[dict] = None,
+    border_color: Optional[str] = None,
+    border_width: Optional[int] = None,
+    shape: Optional[str] = None,
+    logo_bytes: Optional[bytes] = None
 ) -> Tuple[str, Dict[str, Any]]:
     """
     Generate badge image with text overlay - returns base64 image and config
@@ -28,20 +27,52 @@ async def generate_badge_with_text(
         short_title: Short badge title text
         achievement_phrase: Achievement phrase or motto
         colors: Optional brand colors (primary, secondary, tertiary)
+        border_color: Optional border color hex code (e.g., '#000000')
+        border_width: Optional border width in pixels (e.g., 6)
+        shape: Optional badge shape ('hexagon', 'circle', or 'rounded_rect')
+        logo_bytes: Optional logo image bytes for custom logo
 
     Returns:
         Tuple of (base64 encoded image string, configuration dict)
     """
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                f"{settings.BADGE_IMAGE_SERVICE_URL}/api/v1/badge/generate-with-text",
-                json={
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            if logo_bytes:
+                # Multipart form data for logo upload
+                files = {
+                    "logo": ("logo.png", logo_bytes, "image/png")
+                }
+                data = {
                     "short_title": short_title,
                     "achievement_phrase": achievement_phrase,
-                    "colors": colors
                 }
-            )
+                if colors:
+                    data["colors"] = json.dumps(colors)
+                if border_color:
+                    data["border_color"] = border_color
+                if border_width is not None:
+                    data["border_width"] = str(border_width)
+                if shape:
+                    data["shape"] = shape
+
+                response = await client.post(
+                    f"{settings.BADGE_IMAGE_SERVICE_URL}/api/v1/badge/generate-with-text",
+                    files=files,
+                    data=data
+                )
+            else:
+                # JSON request (no logo - existing behavior)
+                response = await client.post(
+                    f"{settings.BADGE_IMAGE_SERVICE_URL}/api/v1/badge/generate-with-text",
+                    json={
+                        "short_title": short_title,
+                        "achievement_phrase": achievement_phrase,
+                        "colors": colors,
+                        "border_color": border_color,
+                        "border_width": border_width,
+                        "shape": shape
+                    }
+                )
             response.raise_for_status()
             result = response.json()
             image_base64 = result.get("data", {}).get("base64", "")

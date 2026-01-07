@@ -24,51 +24,62 @@ class OllamaClient:
     def __init__(self):
         self.api_url = settings.OLLAMA_API_URL
         self.model_config = settings.MODEL_CONFIG
-        
-    async def generate_stream(self, content: str, temperature: float = 0.15, max_tokens: int = 400,
-                            top_p: float = 0.8, top_k: int = 30, repeat_penalty: float = 1.05) -> AsyncGenerator[Dict[str, Any], None]:
+
+    async def generate_stream(
+        self, 
+        content: str, 
+        temperature: float = 0.10, 
+        max_tokens: int = 400,
+        top_p: float = 0.9, 
+        top_k: int = 50, 
+        repeat_penalty: float = 1.05,
+        context_length: Optional[int] = None
+    ) -> AsyncGenerator[Dict[str, Any], None]:
         """Make streaming API call to Ollama with structured response format."""
+        
+        # Use user context length or default from model config
+        max_ctx_len = self.model_config.get("num_ctx", 4096)
+        ctx_len = context_length if context_length is not None else max_ctx_len
+        
         payload = {
             "model": settings.MODEL_NAME,
             "prompt": content,
             "stream": True,
-            "keep_alive": "6h",  # Keep model loaded for 6 hours
+            "keep_alive": "6h",
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,
                 "top_p": top_p,
                 "top_k": top_k,
                 "repeat_penalty": repeat_penalty,
-                "num_ctx": settings.MODEL_CONFIG.get("num_ctx", 4096) 
+                "num_ctx": ctx_len
             }
         }
-        
-        timeout = httpx.Timeout(300.0)  # 5 minutes for cold starts
+
+        timeout = httpx.Timeout(300.0)
         request_id = f"req_{hash(content)}_{int(time.time())}"
         accumulated_response = ""
-        
+
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream("POST", self.api_url, json=payload) as response:
                     response.raise_for_status()
-                    
+
                     async for line in response.aiter_lines():
                         if line.strip():
                             try:
                                 data = json.loads(line)
-                                
                                 # Handle token chunks
                                 if "response" in data and not data.get("done", False):
                                     token_content = data["response"]
                                     accumulated_response += token_content
-                                    
+
                                     yield {
                                         "type": "token",
                                         "content": token_content,
                                         "accumulated": accumulated_response,
                                         "request_id": request_id
                                     }
-                                
                                 # Handle final response
                                 elif data.get("done", False):
                                     # Extract metrics
@@ -83,19 +94,17 @@ class OllamaClient:
                                         f"eval_count={eval_count}, "
                                         f"total={prompt_count + eval_count}"
                                     )
-                                    
                                     yield {
                                         "type": "final",
                                         "content": accumulated_response,
                                         "request_id": request_id,
                                         "metrics": metrics
+
                                     }
                                     break
-                                    
                             except json.JSONDecodeError as e:
                                 logger.warning(f"Failed to parse JSON line: {line} - Error: {e}")
                                 continue
-                                
         except httpx.TimeoutException:
             logger.error("Model request timed out for request_id: %s", request_id)
             yield {
@@ -129,7 +138,12 @@ class OllamaClient:
         else:
             config = config.copy()
 
+        # Keep alive default or from config
         keep_alive = config.pop("keep_alive", "6h")
+
+        # Set default context length if not provided
+        if "num_ctx" not in config:
+            config["num_ctx"] = self.model_config.get("num_ctx", 2048)
 
         payload = {
             "model": settings.MODEL_NAME,
@@ -139,7 +153,7 @@ class OllamaClient:
             "options": config
         }
 
-        timeout = httpx.Timeout(300.0)  # 5 minutes for cold starts
+        timeout = httpx.Timeout(300.0)
         request_id = f"req_{hash(prompt)}_{int(time.time())}"
 
         try:
@@ -148,9 +162,8 @@ class OllamaClient:
                 response = await client.post(self.api_url, json=payload)
                 response.raise_for_status()
                 result = response.json()
-                
+
                 response_text = result.get("response", "").strip()
-                
                 # Extract metrics
                 metrics = extract_metrics(result)
                 
@@ -165,7 +178,6 @@ class OllamaClient:
                 )
                 
                 return response_text, metrics
-                
         except httpx.TimeoutException:
             logger.error("Model request timed out for request_id: %s", request_id)
             raise HTTPException(status_code=504, detail="Model request timed out")
@@ -177,17 +189,23 @@ class OllamaClient:
             raise HTTPException(status_code=500, detail=f"Model call failed: {str(e)}")
 
     async def generate_with_parameters(self, prompt: str, temperature: float = 0.15, 
-                                     max_tokens: int = 400, top_p: float = 0.8, 
-                                     top_k: int = 30, repeat_penalty: float = 1.05) -> tuple[str, Dict[str, Any]]:
-        """Generate response with specific parameters. Returns (response_text, metrics)."""
+                                       max_tokens: int = 400, top_p: float = 0.8, 
+                                       top_k: int = 30, repeat_penalty: float = 1.05, 
+                                       context_length: Optional[int] = None) -> tuple[str, Dict[str, Any]]:
+        """Generate response with specific parameters."""
         config = {
             "temperature": temperature,
             "num_predict": max_tokens,
             "top_p": top_p,
             "top_k": top_k,
-            "repeat_penalty": repeat_penalty
+            "repeat_penalty": repeat_penalty,
         }
-        return await self.generate(prompt, config)
+
+        if context_length is not None:
+            config["num_ctx"] = context_length
+
+        response_text, metrics = await self.generate(prompt, config)
+        return response_text, metrics
     
     def get_metrics_from_stream(self, stream_chunks: list) -> Optional[Dict[str, Any]]:
         """

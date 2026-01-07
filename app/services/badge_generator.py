@@ -13,43 +13,58 @@ from app.services.text_processor import process_course_input
 
 logger = logging.getLogger(__name__)
 
-def get_random_parameters(user_request) -> Dict[str, str]:
-    """Generate random parameters, but respect user-provided ones"""
+def get_badge_configuration(user_request) -> Dict[str, str]:
+    """Get badge configuration parameters, applying defaults for empty values"""
     
-    # Get random selections for empty/default parameters
-    random_params = {}
+    # Initialize badge parameters dictionary
+    badge_params = {}
     
-    # Badge Style - randomly select if not provided or empty
-    if not user_request.badge_style or user_request.badge_style.strip() == "":
-        random_params['badge_style'] = random.choice(list(settings.STYLE_DESCRIPTIONS.keys()))
+    # Handle both old BadgeRequest and new GenerateBadgeRequest formats
+    if hasattr(user_request, 'badge_configuration'):
+        # New format: GenerateBadgeRequest
+        config = user_request.badge_configuration
+        badge_style = config.badge_style
+        badge_tone = config.badge_tone
+        criterion_style = config.criterion_style
+        badge_level = config.badge_level
     else:
-        random_params['badge_style'] = user_request.badge_style
+        # Old format: BadgeRequest (legacy)
+        badge_style = user_request.badge_style
+        badge_tone = user_request.badge_tone
+        criterion_style = user_request.criterion_style
+        badge_level = user_request.badge_level
     
-    # Badge Tone - randomly select if not provided or empty
-    if not user_request.badge_tone or user_request.badge_tone.strip() == "":
-        random_params['badge_tone'] = random.choice(list(settings.TONE_DESCRIPTIONS.keys()))
+    # Badge Style - use default if not provided or empty
+    if not badge_style or badge_style.strip() == "":
+        badge_params['badge_style'] = random.choice(list(settings.STYLE_DESCRIPTIONS.keys()))
     else:
-        random_params['badge_tone'] = user_request.badge_tone
+        badge_params['badge_style'] = badge_style
     
-    # Criterion Style - randomly select if not provided or empty
-    if not user_request.criterion_style or user_request.criterion_style.strip() == "":
-        random_params['criterion_style'] = random.choice(list(settings.CRITERION_TEMPLATES.keys()))
+    # Badge Tone - use default if not provided or empty
+    if not badge_tone or badge_tone.strip() == "":
+        badge_params['badge_tone'] = random.choice(list(settings.TONE_DESCRIPTIONS.keys()))
     else:
-        random_params['criterion_style'] = user_request.criterion_style
+        badge_params['badge_tone'] = badge_tone
     
-    # Badge Level - randomly select if not provided or empty
-    if not user_request.badge_level or user_request.badge_level.strip() == "":
-        random_params['badge_level'] = random.choice(list(settings.LEVEL_DESCRIPTIONS.keys()))
+    # Criterion Style - use default if not provided or empty
+    if not criterion_style or criterion_style.strip() == "":
+        badge_params['criterion_style'] = random.choice(list(settings.CRITERION_TEMPLATES.keys()))
     else:
-        random_params['badge_level'] = user_request.badge_level
+        badge_params['criterion_style'] = criterion_style
     
-    return random_params
+    # Badge Level - use default if not provided or empty
+    if not badge_level or badge_level.strip() == "":
+        badge_params['badge_level'] = random.choice(list(settings.LEVEL_DESCRIPTIONS.keys()))
+    else:
+        badge_params['badge_level'] = badge_level
+    
+    return badge_params
 
 def apply_regeneration_overrides(current_params: Dict[str, str], regeneration_request: Dict[str, str]) -> Dict[str, str]:
     """Override specific parameters for regeneration"""
     updated_params = current_params.copy()
     
-    # Override with new random selections for specified parameters
+    # Override with new selections for specified parameters
     if "badge_style" in regeneration_request:
         updated_params['badge_style'] = random.choice(list(settings.STYLE_DESCRIPTIONS.keys()))
     
@@ -94,26 +109,39 @@ def extract_json_from_response(response_text: str) -> dict:
 async def generate_badge_metadata_async(request) -> dict:
     """Generate badge metadata using enhanced Modelfile system context"""
     
-    random_params = get_random_parameters(request)
+    badge_params = get_badge_configuration(request)
     processed_course_input = process_course_input(request.course_input)
+    
+    # Handle both old and new request formats
+    if hasattr(request, 'badge_configuration'):
+        # New format: GenerateBadgeRequest
+        config = request.badge_configuration
+        badge_style = config.badge_style
+        institution = config.institution if config.institution else None
+        custom_instructions = config.custom_instructions if config.custom_instructions else None
+    else:
+        # Old format: BadgeRequest (legacy)
+        badge_style = request.badge_style
+        institution = request.institution
+        custom_instructions = request.custom_instructions
     
     # Build context-rich user message
     user_content = f"""Course Content: {processed_course_input}
 
 Parameters:
-- Style: {settings.STYLE_DESCRIPTIONS.get(random_params['badge_style'])}
-- Tone: {settings.TONE_DESCRIPTIONS.get(random_params['badge_tone'])}  
-- Level: {settings.LEVEL_DESCRIPTIONS.get(random_params['badge_level'])}
-- Criterion Style: {settings.CRITERION_TEMPLATES.get(random_params['criterion_style'])}"""
+- Style: {settings.STYLE_DESCRIPTIONS.get(badge_params['badge_style'])}
+- Tone: {settings.TONE_DESCRIPTIONS.get(badge_params['badge_tone'])}  
+- Level: {settings.LEVEL_DESCRIPTIONS.get(badge_params['badge_level'])}
+- Criterion Style: {settings.CRITERION_TEMPLATES.get(badge_params['criterion_style'])}"""
     
-    if request.badge_style:
-        user_content += f"\n- Badge Style: {request.badge_style} , incorporate prominently in both badge name and badge description"
+    if badge_style:
+        user_content += f"\n- Badge Style: {badge_style} , incorporate prominently in both badge name and badge description"
 
-    if request.institution:
-        user_content += f"\n- Institution: {request.institution} , incorporate prominently in both badge name and badge description for branding"
+    if institution:
+        user_content += f"\n- Institution: {institution} , incorporate prominently in both badge name and badge description for branding"
         
-    if request.custom_instructions:
-        user_content += f"\n- Special Instructions: {request.custom_instructions}"
+    if custom_instructions:
+        user_content += f"\n- Special Instructions: {custom_instructions}"
 
     user_content += "\n\nGenerate badge JSON with exact schema {\"badge_name\": \"string\", \"badge_description\": \"string\", \"criteria\": {\"narrative\": \"string\"}}:"
 
@@ -126,7 +154,7 @@ Parameters:
     # Add metrics to result
     result['metrics'] = metrics
     result["raw_model_output"] = response
-    result["selected_parameters"] = random_params
+    result["selected_parameters"] = badge_params
     result["processed_course_input"] = processed_course_input
     
     return result
@@ -175,8 +203,19 @@ async def generate_badge_metadata_stream_async(request) -> AsyncGenerator[Dict[s
     # Process course input
     processed_input = process_course_input(request.course_input)
     
-    # Get random parameters
-    random_params = get_random_parameters(request)
+    # Get badge configuration parameters
+    badge_params = get_badge_configuration(request)
+    
+    # Handle both old and new request formats
+    if hasattr(request, 'badge_configuration'):
+        # New format: GenerateBadgeRequest
+        config = request.badge_configuration
+        institution = config.institution if config.institution else None
+        custom_instructions = config.custom_instructions if config.custom_instructions else None
+    else:
+        # Old format: BadgeRequest (legacy)
+        institution = request.institution
+        custom_instructions = request.custom_instructions
     
     # Build the prompt
     prompt = f"""Generate Open Badges 3.0 compliant metadata from course content.
@@ -184,13 +223,13 @@ async def generate_badge_metadata_stream_async(request) -> AsyncGenerator[Dict[s
 COURSE CONTENT:
 {processed_input}
 
-BADGE STYLE: {random_params['badge_style']} - {settings.STYLE_DESCRIPTIONS[random_params['badge_style']]}
-BADGE TONE: {random_params['badge_tone']} - {settings.TONE_DESCRIPTIONS[random_params['badge_tone']]}
-BADGE LEVEL: {random_params['badge_level']} - {settings.LEVEL_DESCRIPTIONS[random_params['badge_level']]}
-CRITERION STYLE: {random_params['criterion_style']} - {settings.CRITERION_TEMPLATES[random_params['criterion_style']]}
+BADGE STYLE: {badge_params['badge_style']} - {settings.STYLE_DESCRIPTIONS[badge_params['badge_style']]}
+BADGE TONE: {badge_params['badge_tone']} - {settings.TONE_DESCRIPTIONS[badge_params['badge_tone']]}
+BADGE LEVEL: {badge_params['badge_level']} - {settings.LEVEL_DESCRIPTIONS[badge_params['badge_level']]}
+CRITERION STYLE: {badge_params['criterion_style']} - {settings.CRITERION_TEMPLATES[badge_params['criterion_style']]}
 
-INSTITUTION: {request.institution or "Not specified"}
-CUSTOM INSTRUCTIONS: {request.custom_instructions or "None"}
+INSTITUTION: {institution or "Not specified"}
+CUSTOM INSTRUCTIONS: {custom_instructions or "None"}
 
 OUTPUT FORMAT: Return ONLY valid JSON in this exact format:
 {{
@@ -226,7 +265,7 @@ Generate badge metadata now:"""
             # Try to extract JSON from the response
             try:
                 badge_json = extract_json_from_response(raw_response)
-                badge_json["selected_parameters"] = random_params
+                badge_json["selected_parameters"] = badge_params
                 badge_json["processed_course_input"] = processed_input
                 
                 # Return the parsed JSON as final content
