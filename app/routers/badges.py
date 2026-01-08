@@ -1,5 +1,4 @@
 import time
-import random
 import logging
 import json
 import re
@@ -161,13 +160,14 @@ async def generate_badge(request: GenerateBadgeRequest):
                 logger.warning(f"Image generation enabled but no configuration provided for badge {badge_id}")
                 img_config = ImageConfiguration()  # Use defaults
             
-            # Determine image type (local decision)
-            if img_config.image_type and img_config.image_type in ["text_overlay", "icon_based"]:
-                image_type_selected = img_config.image_type
+            # Determine image type - ONLY use icon_based if explicitly provided
+            if img_config.image_type == "icon_based":
+                image_type_selected = "icon_based"
+                logger.info(f"Using explicitly provided image type: icon_based")
             else:
-                image_type_selected = random.choice(["text_overlay", "text_overlay"])
-            
-            logger.info(f"Selected image type: {image_type_selected}")
+                # Default to text_overlay for all other cases (empty, null, or "text_overlay")
+                image_type_selected = "text_overlay"
+                logger.info(f"Using default image type: text_overlay")
 
             # Generate image based on type
             if image_type_selected == "text_overlay":
@@ -734,13 +734,14 @@ Parameters:
                                     logger.warning(f"Image generation enabled but no configuration provided for streaming badge {badge_id}")
                                     img_config = ImageConfiguration()  # Use defaults
                                 
-                                # Determine image type (local decision)
-                                if img_config.image_type and img_config.image_type in ["text_overlay", "icon_based"]:
-                                    image_type = img_config.image_type
+                                # Determine image type - ONLY use icon_based if explicitly provided
+                                if img_config.image_type == "icon_based":
+                                    image_type = "icon_based"
+                                    logger.info(f"Using explicitly provided image type: icon_based")
                                 else:
-                                    image_type = random.choice(["text_overlay", "text_overlay"])
-                                
-                                logger.info(f"Selected image type: {image_type}")
+                                    # Default to text_overlay for all other cases (empty, null, or "text_overlay")
+                                    image_type = "text_overlay"
+                                    logger.info(f"Using default image type: text_overlay")
 
                                 # Generate image based on type
                                 if image_type == "text_overlay":
