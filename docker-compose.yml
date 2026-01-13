@@ -24,13 +24,16 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ../assets:/app/assets
+      - ./assets:/app/assets
+      - ./logs:/app/logs
     environment:
-      - OLLAMA_API_URL=http://host.docker.internal:11434/api/generate
+      - OLLAMA_API_URL=http://ollama:11434/api/generate
+      - BADGE_IMAGE_SERVICE_URL=http://host.docker.internal:3001  # For external image service on host
+      - PYTHONUNBUFFERED=1
     depends_on:
       - ollama
-    extra_hosts:              
-      - "host.docker.internal:host-gateway"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Enable access to host machine services
     restart: unless-stopped
 
 volumes:

@@ -96,32 +96,63 @@ async def call_badge_image_service(
     Returns:
         Tuple of (base64 encoded image, image config dict)
     """
+    logger.info("=" * 80)
+    logger.info(f"Badge Image Generation Request - Type: {image_type}")
+    logger.info(f"Badge Name: {badge_name}")
+    logger.info(f"Service URL: {settings.BADGE_IMAGE_SERVICE_URL}")
+    logger.info("=" * 80)
+    
     try:
         # Decide which endpoint to call based on image_type
         if image_type == "text_overlay":
-            return await _generate_text_badge(
+            logger.info(f"Routing to text_overlay generation endpoint")
+            logger.debug(f"Short title: {short_title or badge_name}")
+            logger.debug(f"Achievement phrase: {achievement_phrase or 'Achievement Unlocked'}")
+            
+            result = await _generate_text_badge(
                 short_title=short_title or badge_name,
                 achievement_phrase=achievement_phrase or "Achievement Unlocked",
                 institution=institution,
                 institute_url=institute_url,
                 image_configuration=image_configuration
             )
+            
+            logger.info("=" * 80)
+            logger.info(f"Badge Image Generation Complete - Type: text_overlay")
+            logger.info("=" * 80)
+            return result
         
         elif image_type == "icon_based":
-            return await _generate_icon_badge(
+            logger.info(f"Routing to icon_based generation endpoint")
+            logger.debug(f"Badge name: {badge_name}")
+            
+            result = await _generate_icon_badge(
                 badge_name=badge_name,
                 badge_description=badge_description,
                 institution=institution,
                 institute_url=institute_url,
                 image_configuration=image_configuration
             )
+            
+            logger.info("=" * 80)
+            logger.info(f"Badge Image Generation Complete - Type: icon_based")
+            logger.info("=" * 80)
+            return result
         
         else:
-            logger.error(f"Invalid image_type: {image_type}. Must be 'text_overlay' or 'icon_based'")
+            logger.error("=" * 80)
+            logger.error(f"❌ Invalid image_type: '{image_type}'")
+            logger.error(f"Must be 'text_overlay' or 'icon_based'")
+            logger.error("=" * 80)
             return "", {}
             
     except Exception as e:
-        logger.error(f"Unexpected error in call_badge_image_service: {e}")
+        logger.error("=" * 80)
+        logger.error(f"❌ Unexpected error in call_badge_image_service")
+        logger.error(f"Image type: {image_type}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error message: {str(e)}", exc_info=True)
+        logger.error("=" * 80)
         return "", {}
 
 
@@ -135,7 +166,13 @@ async def _generate_text_badge(
     """
     Call /badge/generate-with-text endpoint for text overlay badges
     """
+    url = f"{settings.BADGE_IMAGE_SERVICE_URL}/api/v1/badge/generate-with-text"
+    
     try:
+        logger.info(f"Starting text_overlay badge image generation for '{short_title}'")
+        logger.debug(f"Target service URL: {url}")
+        logger.debug(f"Institution: {institution or 'None'}, URL: {institute_url or 'None'}")
+        
         # Build payload matching exact structure
         payload = {
             "image_type": "text_overlay",
@@ -157,13 +194,15 @@ async def _generate_text_badge(
                 "logo": image_configuration.logo or "",
                 "ribbon_type": image_configuration.ribbon_type or ""
             }
-
-        url = f"{settings.BADGE_IMAGE_SERVICE_URL}/api/v1/badge/generate-with-text"
+            logger.debug(f"Image config provided - Shape: {payload['image_configuration'].get('shape', 'default')}, "
+                        f"Border: {payload['image_configuration'].get('border_color', 'default')}")
         
         # Log outgoing request
         start_time = time.time()
         
         async with httpx.AsyncClient(timeout=30.0) as client:
+            logger.info(f"Attempting HTTP connection to Badge Image Service at {url}")
+            
             _log_outgoing_request(
                 method="POST",
                 url=url,
@@ -173,6 +212,8 @@ async def _generate_text_badge(
             
             response = await client.post(url, json=payload)
             response_time = time.time() - start_time
+            
+            logger.info(f"Received response from image service in {response_time:.4f}s - Status: {response.status_code}")
             
             response.raise_for_status()
             result = response.json()
@@ -187,17 +228,42 @@ async def _generate_text_badge(
             image_base64 = result.get("data", {}).get("base64", "")
             image_config = result.get("config", {})
             
-            logger.info("Successfully generated text_overlay badge image")
+            # Log success with image metadata
+            image_size_kb = len(image_base64) / 1024 if image_base64 else 0
+            logger.info(f"✅ Successfully generated text_overlay badge image - Size: {image_size_kb:.2f} KB")
+            logger.debug(f"Image config returned: {json.dumps(image_config)}")
+            
             return image_base64, image_config
             
     except httpx.HTTPStatusError as e:
-        logger.error(f"Text badge service returned error {e.response.status_code}: {e.response.text}")
+        response_time = time.time() - start_time if 'start_time' in locals() else 0
+        logger.error(f"❌ Badge Image Service returned HTTP error {e.response.status_code} after {response_time:.4f}s")
+        logger.error(f"URL: {url}")
+        logger.error(f"Response body: {e.response.text[:500]}")  # First 500 chars
         return "", {}
     except httpx.ConnectError as e:
-        logger.error(f"Cannot connect to text badge service: {e}")
+        response_time = time.time() - start_time if 'start_time' in locals() else 0
+        logger.error(f"❌ Cannot connect to Badge Image Service at {url}")
+        logger.error(f"Connection error after {response_time:.4f}s: {str(e)}")
+        logger.error(f"Please verify that the Badge Image Service is running and accessible")
+        logger.error(f"Current BADGE_IMAGE_SERVICE_URL: {settings.BADGE_IMAGE_SERVICE_URL}")
+        return "", {}
+    except httpx.TimeoutException as e:
+        logger.error(f"❌ Badge Image Service request timed out after 30 seconds")
+        logger.error(f"URL: {url}")
+        logger.error(f"Error: {str(e)}")
+        return "", {}
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Failed to parse JSON response from Badge Image Service")
+        logger.error(f"URL: {url}")
+        logger.error(f"Error: {str(e)}")
         return "", {}
     except Exception as e:
-        logger.error(f"Unexpected error generating text badge: {e}")
+        response_time = time.time() - start_time if 'start_time' in locals() else 0
+        logger.error(f"❌ Unexpected error generating text badge after {response_time:.4f}s")
+        logger.error(f"URL: {url}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error message: {str(e)}", exc_info=True)
         return "", {}
 
 
@@ -211,7 +277,14 @@ async def _generate_icon_badge(
     """
     Call /badge/generate-with-icon endpoint for icon-based badges
     """
+    url = f"{settings.BADGE_IMAGE_SERVICE_URL}/api/v1/badge/generate-with-icon"
+    
     try:
+        logger.info(f"Starting icon_based badge image generation for '{badge_name}'")
+        logger.debug(f"Target service URL: {url}")
+        logger.debug(f"Institution: {institution or 'None'}, URL: {institute_url or 'None'}")
+        logger.debug(f"Badge description length: {len(badge_description)} chars")
+        
         # Build payload matching exact structure
         payload = {
             "image_type": "icon_based",
@@ -233,13 +306,15 @@ async def _generate_icon_badge(
                 "logo": image_configuration.logo or "",
                 "ribbon_type": image_configuration.ribbon_type or ""
             }
+            logger.debug(f"Image config provided - Shape: {payload['image_configuration'].get('shape', 'default')}, "
+                        f"Border: {payload['image_configuration'].get('border_color', 'default')}")
 
-        url = f"{settings.BADGE_IMAGE_SERVICE_URL}/api/v1/badge/generate-with-icon"
-        
         # Log outgoing request
         start_time = time.time()
         
         async with httpx.AsyncClient(timeout=30.0) as client:
+            logger.info(f"Attempting HTTP connection to Badge Image Service at {url}")
+            
             _log_outgoing_request(
                 method="POST",
                 url=url,
@@ -249,6 +324,8 @@ async def _generate_icon_badge(
             
             response = await client.post(url, json=payload)
             response_time = time.time() - start_time
+            
+            logger.info(f"Received response from image service in {response_time:.4f}s - Status: {response.status_code}")
             
             response.raise_for_status()
             result = response.json()
@@ -263,16 +340,41 @@ async def _generate_icon_badge(
             image_base64 = result.get("data", {}).get("base64", "")
             image_config = result.get("config", {})
             
-            logger.info("Successfully generated icon_based badge image")
+            # Log success with image metadata
+            image_size_kb = len(image_base64) / 1024 if image_base64 else 0
+            logger.info(f"✅ Successfully generated icon_based badge image - Size: {image_size_kb:.2f} KB")
+            logger.debug(f"Image config returned: {json.dumps(image_config)}")
+            
             return image_base64, image_config
             
     except httpx.HTTPStatusError as e:
-        logger.error(f"Icon badge service returned error {e.response.status_code}: {e.response.text}")
+        response_time = time.time() - start_time if 'start_time' in locals() else 0
+        logger.error(f"❌ Badge Image Service returned HTTP error {e.response.status_code} after {response_time:.4f}s")
+        logger.error(f"URL: {url}")
+        logger.error(f"Response body: {e.response.text[:500]}")  # First 500 chars
         return "", {}
     except httpx.ConnectError as e:
-        logger.error(f"Cannot connect to icon badge service: {e}")
+        response_time = time.time() - start_time if 'start_time' in locals() else 0
+        logger.error(f"❌ Cannot connect to Badge Image Service at {url}")
+        logger.error(f"Connection error after {response_time:.4f}s: {str(e)}")
+        logger.error(f"Please verify that the Badge Image Service is running and accessible")
+        logger.error(f"Current BADGE_IMAGE_SERVICE_URL: {settings.BADGE_IMAGE_SERVICE_URL}")
+        return "", {}
+    except httpx.TimeoutException as e:
+        logger.error(f"❌ Badge Image Service request timed out after 30 seconds")
+        logger.error(f"URL: {url}")
+        logger.error(f"Error: {str(e)}")
+        return "", {}
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Failed to parse JSON response from Badge Image Service")
+        logger.error(f"URL: {url}")
+        logger.error(f"Error: {str(e)}")
         return "", {}
     except Exception as e:
-        logger.error(f"Unexpected error generating icon badge: {e}")
+        response_time = time.time() - start_time if 'start_time' in locals() else 0
+        logger.error(f"❌ Unexpected error generating icon badge after {response_time:.4f}s")
+        logger.error(f"URL: {url}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error message: {str(e)}", exc_info=True)
         return "", {}
 

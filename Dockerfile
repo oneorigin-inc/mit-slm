@@ -15,8 +15,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ app/
 COPY assets/ assets/
 
+# Create logs directory
+RUN mkdir -p /app/logs
+
 # Expose port
 EXPOSE 8000
+
+# Set Python to run in unbuffered mode for immediate log output
+ENV PYTHONUNBUFFERED=1
 
 # Run the application
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
