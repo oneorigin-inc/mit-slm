@@ -4,6 +4,37 @@ from pathlib import Path
 from logging.handlers import RotatingFileHandler
 
 
+class HealthCheckFilter(logging.Filter):
+    """
+    Filter to suppress health check endpoint logs.
+    Filters out logs that contain '/health' path or health check related messages.
+    """
+    
+    def filter(self, record: logging.LogRecord) -> bool:
+        """
+        Return False to suppress the log record, True to allow it.
+        
+        Args:
+            record: The log record to filter
+            
+        Returns:
+            bool: False to suppress, True to allow
+        """
+        # Get the log message
+        message = record.getMessage()
+        
+        # Suppress logs containing health check path
+        if '/health' in message or 'health check' in message.lower():
+            return False
+        
+        # Suppress logs from health router
+        if record.name == 'app.routers.health':
+            return False
+        
+        # Allow all other logs
+        return True
+
+
 def setup_logging(
     max_bytes: int = 10 * 1024 * 1024,  # 10MB
     backup_count: int = 5
@@ -28,10 +59,14 @@ def setup_logging(
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     
+    # Create health check filter
+    health_filter = HealthCheckFilter()
+    
     # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
+    console_handler.addFilter(health_filter)
     
     # Rotating file handler
     file_handler = RotatingFileHandler(
@@ -41,6 +76,7 @@ def setup_logging(
     )
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)
+    file_handler.addFilter(health_filter)
     
     # Configure root logger
     root_logger = logging.getLogger()

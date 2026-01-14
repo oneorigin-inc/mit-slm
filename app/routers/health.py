@@ -82,8 +82,11 @@ async def health_check():
     Health check endpoint that verifies:
     - Service is running
     - Ollama model is loaded and available
+    
+    Note: Logging for this endpoint is suppressed to reduce log noise.
     """
-    logger.info("Health check endpoint called")
+    # Use DEBUG level to reduce log noise (filtered by HealthCheckFilter)
+    logger.debug("Health check endpoint called")
     
     # Check Ollama model status using tags API
     ollama_status = await check_ollama_model_status()
@@ -114,7 +117,8 @@ async def health_check():
         }
     }
     
-    logger.info(f"Health check response: {response}")
+    # Use DEBUG level to reduce log noise (filtered by HealthCheckFilter)
+    logger.debug(f"Health check response: status={status}, ollama_available={ollama_status.get('available')}, model_available={ollama_status.get('model_available')}")
     
     if status_code != 200:
         raise HTTPException(status_code=status_code, detail=response)

@@ -32,6 +32,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         """
         start_time = time.time()
         
+        # Skip logging for health check endpoint
+        is_health_check = request.url.path == "/health" or request.url.path == "/"
+        
         # Read and cache request body for logging
         body = None
         body_bytes = b''
@@ -80,34 +83,39 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             # For file uploads, just log that it's a multipart request
             body = "<multipart/form-data - file upload>"
         
-        # Convert headers to dict for logging (exclude sensitive data if needed)
-        headers_dict = dict(request.headers)
-        
-        # Convert query params to dict
-        query_dict = dict(request.query_params)
-        
-        # Log the incoming request
-        logger.info('==============================================================')
-        logger.info(
-            f"""Network incoming logs >>>
-          >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-          request.method          {request.method}
-          request.path            {request.url.path}
-          request.headers         {json.dumps(headers_dict, indent=1)}
-          request.query           {json.dumps(query_dict, indent=1)}
-          request.body            {json.dumps(body, indent=1) if isinstance(body, dict) else str(body) if body else "{}"}
-          <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"""
-        )
+        # Skip detailed logging for health check endpoint
+        if not is_health_check:
+            # Convert headers to dict for logging (exclude sensitive data if needed)
+            headers_dict = dict(request.headers)
+            
+            # Convert query params to dict
+            query_dict = dict(request.query_params)
+            
+            # Log the incoming request
+            logger.info('==============================================================')
+            logger.info(
+                f"""Network incoming logs >>>
+              >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+              request.method          {request.method}
+              request.path            {request.url.path}
+              request.headers         {json.dumps(headers_dict, indent=1)}
+              request.query           {json.dumps(query_dict, indent=1)}
+              request.body            {json.dumps(body, indent=1) if isinstance(body, dict) else str(body) if body else "{}"}
+              <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"""
+            )
         
         # Process the request with proper exception handling
         try:
-            logger.info(f"Forwarding request to route handler: {request.method} {request.url.path}")
+            if not is_health_check:
+                logger.info(f"Forwarding request to route handler: {request.method} {request.url.path}")
             response = await call_next(request)
             
-            # Log response time
-            process_time = time.time() - start_time
-            logger.info(f"Request completed in {process_time:.4f}s | Status: {response.status_code}")
-            logger.info('==============================================================')
+            # Skip response logging for health check endpoint
+            if not is_health_check:
+                # Log response time
+                process_time = time.time() - start_time
+                logger.info(f"Request completed in {process_time:.4f}s | Status: {response.status_code}")
+                logger.info('==============================================================')
             
             return response
         except Exception as e:
