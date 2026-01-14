@@ -32,13 +32,14 @@ class Settings(BaseSettings):
     # LOGOS_PATH: str = "assets/logos/"
     # FONTS_PATH: str = "assets/fonts/"
     
-    # NLTK Configuration
-    NLTK_AVAILABLE: bool = True
+    # NLTK Configuration (removed - not used in codebase)
+    # NLTK_AVAILABLE: bool = True
 
     # LAiSER Skill Extraction Configuration
-    LAISER_MODEL_ID: str = os.getenv("LAISER_MODEL_ID", "bert-base-uncased")
-    LAISER_HF_TOKEN: str = os.getenv("LAISER_HF_TOKEN", "")
-    LAISER_USE_GPU: bool = os.getenv("LAISER_USE_GPU", "false").lower() == "true"
+    # Note: model_id and hf_token can be empty strings if not provided
+    LAISER_MODEL_ID: str = os.getenv("LAISER_MODEL_ID", "")  # Empty by default, will use LAiSER defaults if not provided
+    LAISER_HF_TOKEN: str = os.getenv("LAISER_HF_TOKEN", "")  # Empty by default for public models
+    LAISER_USE_GPU: bool = os.getenv("LAISER_USE_GPU", "false").lower() == "true"  # CPU-only mode (False)
     LAISER_TOP_K: int = int(os.getenv("LAISER_TOP_K", "10"))
 
     # Style Descriptions

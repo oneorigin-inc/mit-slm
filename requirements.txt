@@ -1,8 +1,8 @@
 # ============================================
 # SLM Badge Generator - Production Requirements
 # ============================================
-# CPU-optimized with LAiSER support (use_gpu=False)
-# Image size: ~3GB
+# LAiSER DISABLED BY DEFAULT - Uncomment laiser[cpu] below to enable
+# Install with: pip install -r requirements.txt
 # ============================================
 
 # ============================================
@@ -14,59 +14,44 @@ pydantic==2.5.0
 pydantic-settings==2.1.0
 httpx==0.25.2
 python-multipart==0.0.6
-requests>=2.32.2
 python-dotenv>=0.19.0,<1.0.0
 
 # ============================================
-# Web Scraping (Required)
-# ============================================
-beautifulsoup4==4.12.2
-lxml==4.9.3
-
-# ============================================
-# NLP (Required)
-# ============================================
-nltk==3.8.1
-
-# ============================================
-# Core ML Libraries (Required for LAiSER)
+# Core ML Libraries (Minimal - only for similarity matching)
 # ============================================
 numpy>=1.26.0,<2.1.0
-pandas==2.2.2
 scikit-learn>=1.5.0
-scipy>=1.11.0
+# pandas==2.2.2  # TEMPORARILY DISABLED - Only needed for LAiSER
+# scipy>=1.11.0  # TEMPORARILY DISABLED - Only needed for LAiSER
 
 # ============================================
-# PyTorch - CPU ONLY (saves 6GB!)
+# PyTorch - CPU ONLY (TEMPORARILY DISABLED - LAiSER disabled)
 # ============================================
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.5.1+cpu
+# --extra-index-url https://download.pytorch.org/whl/cpu
+# torch==2.5.1+cpu
 # Note: torchvision and torchaudio not needed for LAiSER
 
 # ============================================
-# Transformers and NLP (Required for LAiSER)
+# Transformers and NLP (TEMPORARILY DISABLED - LAiSER disabled)
 # ============================================
-transformers>=4.0.0,<5.0.0
-tokenizers>=0.10.0,<1.0.0
-sentence-transformers>=2.0.0
-spacy>=3.0.0,<4.0.0
+# transformers>=4.0.0,<5.0.0
+# tokenizers>=0.10.0,<1.0.0
+# sentence-transformers>=2.0.0
+# spacy>=3.0.0,<4.0.0
 
 # ============================================
-# LAiSER Dependencies
+# LAiSER Dependencies (DISABLED BY DEFAULT)
 # ============================================
-skillNer==1.0.3
-laiser>=0.1.0
+# Uncomment below to enable LAiSER skill extraction
+# Install with [cpu] extra to exclude GPU dependencies (torch, vllm)
+# This automatically installs required dependencies: pandas, scipy, transformers, spacy, etc.
+# laiser[cpu]>=0.1.0
+# skillNer is included as a dependency of laiser
 
 # ============================================
-# Vector Search (Required for LAiSER)
+# Vector Search (TEMPORARILY DISABLED - LAiSER disabled)
 # ============================================
-faiss-cpu>=1.7.0
-
-# ============================================
-# Utilities
-# ============================================
-psutil>=5.8.0,<6.0.0
-tqdm>=4.65.0
+# faiss-cpu>=1.7.0
 
 # ============================================
 # Post-Installation Required:
@@ -74,6 +59,10 @@ tqdm>=4.65.0
 # Run after installation:
 #   python -m spacy download en_core_web_lg
 # ============================================
-# This configuration uses CPU-only PyTorch which is perfect
-# for use_gpu=False setting in skill_extractor.py
+# REMOVED UNUSED DEPENDENCIES:
+# - nltk (not used anywhere in codebase)
+# - beautifulsoup4, lxml (only in old unused files)
+# - requests (only in old unused files, httpx is used instead)
+# - psutil (not used)
+# - tqdm (not used)
 # ============================================

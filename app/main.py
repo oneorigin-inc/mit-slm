@@ -171,17 +171,20 @@ async def lifespan(app: FastAPI):
     # Startup
     await preload_model()
 
+    # LAiSER DISABLED BY DEFAULT - Uncomment below to enable
     # Initialize LAiSER skill extractor (available for per-request use)
-    try:
-        logger.info("Initializing LAiSER skill extractor...")
-        await skill_service.initialize(
-            ai_model_id=settings.LAISER_MODEL_ID,
-            hf_token=settings.LAISER_HF_TOKEN,
-            use_gpu=settings.LAISER_USE_GPU
-        )
-        logger.info("LAiSER initialization complete.")
-    except Exception as e:
-        logger.warning(f"LAiSER initialization failed: {e}. Skill extraction will be unavailable for all requests.")
+    # Note: model_id and hf_token can be empty strings - LAiSER will use defaults
+    # try:
+    #     logger.info("Initializing LAiSER skill extractor...")
+    #     await skill_service.initialize(
+    #         ai_model_id=settings.LAISER_MODEL_ID if settings.LAISER_MODEL_ID else "",
+    #         hf_token=settings.LAISER_HF_TOKEN if settings.LAISER_HF_TOKEN else "",
+    #         use_gpu=settings.LAISER_USE_GPU
+    #     )
+    #     logger.info("LAiSER initialization complete.")
+    # except Exception as e:
+    #     logger.warning(f"LAiSER initialization failed: {e}. Skill extraction will be unavailable for all requests.")
+    logger.info("LAiSER skill extractor is disabled by default. Uncomment code in main.py and skill_extractor.py to enable.")
 
     yield
     # Shutdown (if needed)
