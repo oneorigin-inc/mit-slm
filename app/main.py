@@ -8,6 +8,7 @@ from app.core.logging import setup_logging
 from app.core.config import settings
 from app.services.ollama_client import preload_model
 from app.services.skill_extractor import skill_service
+import asyncio
 import logging
 import json
 import time
@@ -39,13 +40,15 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         # Get content type
         content_type = request.headers.get("content-type", "")
         
-        # Skip body reading for multipart/form-data (file uploads)
+        # Skip body reading for multipart/form-data (file uploads) and streaming endpoints
         # These requests have streams that can't be cached properly
-        if request.method in ["POST", "PUT", "PATCH"] and not content_type.startswith("multipart/form-data"):
+        is_streaming_endpoint = "/stream" in request.url.path
+
+        if request.method in ["POST", "PUT", "PATCH"] and not content_type.startswith("multipart/form-data") and not is_streaming_endpoint:
             try:
                 # Read the body bytes
                 body_bytes = await request.body()
-                
+
                 if body_bytes:
                     try:
                         body = json.loads(body_bytes.decode('utf-8'))
@@ -56,26 +59,32 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                         body = body_bytes.decode('utf-8', errors='ignore')
                 else:
                     body = None
-                
+
                 # CRITICAL FIX: Always restore the body stream (even if empty)
                 # This ensures FastAPI/Pydantic can read the body after middleware
                 # The receive function must be set regardless of whether body_bytes is empty
                 # Capture body_bytes in closure
                 cached_body = body_bytes
+                body_sent = False
+
                 async def receive():
-                    return {"type": "http.request", "body": cached_body, "more_body": False}
-                
+                    nonlocal body_sent
+                    if not body_sent:
+                        body_sent = True
+                        return {"type": "http.request", "body": cached_body, "more_body": False}
+                    # After body is sent, wait for disconnect
+                    while True:
+                        await asyncio.sleep(3600)  # Wait indefinitely for disconnect
+
                 # Replace request's receive with cached version (proper ASGI pattern)
                 request._receive = receive
                 logger.debug(f"Body stream restored: {len(cached_body)} bytes cached for FastAPI")
-                    
+
             except Exception as e:
                 logger.warning(f"Could not read request body: {e}")
                 body = "<unable to read body>"
-                # Even on error, restore the stream with empty body
-                async def receive():
-                    return {"type": "http.request", "body": b"", "more_body": False}
-                request._receive = receive
+        elif is_streaming_endpoint:
+            body = "<streaming endpoint - body not logged>"
         elif content_type.startswith("multipart/form-data"):
             # For file uploads, just log that it's a multipart request
             body = "<multipart/form-data - file upload>"
