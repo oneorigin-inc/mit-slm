@@ -1,11 +1,14 @@
 from contextlib import asynccontextmanager
+from typing import Any
 from fastapi import FastAPI, Request
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.routers import badges, health
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.logging import setup_logging
 from app.core.config import settings
 from app.services.ollama_client import preload_model
 from app.services.skill_extractor import skill_service
+import asyncio
 import logging
 import json
 import time
@@ -14,83 +17,163 @@ import copy
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# Request Logging Middleware
+# Request Logging Middleware (Production-Ready Implementation)
 # ============================================================================
-def _sanitize_body_for_logging(body: dict) -> dict:
-    """
-    Remove base64 encoded data from request body for cleaner logs.
-    Uses deep copy to avoid modifying the original request body.
-    Controlled by ENABLE_LOG_BASE64_DATA config flag.
-    """
-    # If base64 logging is enabled, return body as-is
-    if settings.ENABLE_LOG_BASE64_DATA:
-        return body
-    
-    # Deep copy to ensure we don't modify the original
-    sanitized = copy.deepcopy(body)
-    
-    # Remove logo from image_generation.image_configuration.logo
-    if "image_generation" in sanitized and isinstance(sanitized["image_generation"], dict):
-        img_gen = sanitized["image_generation"]
-        if "image_configuration" in img_gen and isinstance(img_gen["image_configuration"], dict):
-            img_config = img_gen["image_configuration"]
-            if "logo" in img_config and img_config["logo"]:
-                img_config["logo"] = "<base64_data_excluded_from_log>"
-    
-    return sanitized
 
-async def log_requests_middleware(request: Request, call_next):
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """
-    Middleware to log all incoming API requests in a systematic format.
-    Captures method, path, headers, query parameters, and body.
+    Production-ready middleware for logging incoming API requests.
+    Uses proper BaseHTTPMiddleware pattern to handle request body without consuming the stream.
     """
-    start_time = time.time()
     
-    # Read request body (for POST/PUT requests)
-    body = None
-    if request.method in ["POST", "PUT", "PATCH"]:
+    async def dispatch(self, request: Request, call_next):
+        """
+        Middleware dispatch method that logs requests and responses.
+        Properly handles request body by caching it in an ASGI-compliant way.
+        """
+        start_time = time.time()
+        
+        # Read and cache request body for logging
+        body = None
+        body_bytes = b''
+        
+        # Get content type
+        content_type = request.headers.get("content-type", "")
+        
+        # Skip body reading for multipart/form-data (file uploads) and streaming endpoints
+        # These requests have streams that can't be cached properly
+        is_streaming_endpoint = "/stream" in request.url.path
+
+        if request.method in ["POST", "PUT", "PATCH"] and not content_type.startswith("multipart/form-data") and not is_streaming_endpoint:
+            try:
+                # Read the body bytes
+                body_bytes = await request.body()
+
+                if body_bytes:
+                    try:
+                        body = json.loads(body_bytes.decode('utf-8'))
+                        # Remove base64 data from logs to keep them clean
+                        if isinstance(body, dict):
+                            body = self._sanitize_body_for_logging(body)
+                    except json.JSONDecodeError:
+                        body = body_bytes.decode('utf-8', errors='ignore')
+                else:
+                    body = None
+
+                # CRITICAL FIX: Always restore the body stream (even if empty)
+                # This ensures FastAPI/Pydantic can read the body after middleware
+                # The receive function must be set regardless of whether body_bytes is empty
+                # Capture body_bytes in closure
+                cached_body = body_bytes
+                body_sent = False
+
+                async def receive():
+                    nonlocal body_sent
+                    if not body_sent:
+                        body_sent = True
+                        return {"type": "http.request", "body": cached_body, "more_body": False}
+                    # After body is sent, wait for disconnect
+                    while True:
+                        await asyncio.sleep(3600)  # Wait indefinitely for disconnect
+
+                # Replace request's receive with cached version (proper ASGI pattern)
+                request._receive = receive
+                logger.debug(f"Body stream restored: {len(cached_body)} bytes cached for FastAPI")
+
+            except Exception as e:
+                logger.warning(f"Could not read request body: {e}")
+                body = "<unable to read body>"
+        elif is_streaming_endpoint:
+            body = "<streaming endpoint - body not logged>"
+        elif content_type.startswith("multipart/form-data"):
+            # For file uploads, just log that it's a multipart request
+            body = "<multipart/form-data - file upload>"
+        
+        # Convert headers to dict for logging (exclude sensitive data if needed)
+        headers_dict = dict(request.headers)
+        
+        # Convert query params to dict
+        query_dict = dict(request.query_params)
+        
+        # Log the incoming request
+        logger.info('==============================================================')
+        logger.info(
+            f"""Network incoming logs >>>
+          >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+          request.method          {request.method}
+          request.path            {request.url.path}
+          request.headers         {json.dumps(headers_dict, indent=1)}
+          request.query           {json.dumps(query_dict, indent=1)}
+          request.body            {json.dumps(body, indent=1) if isinstance(body, dict) else str(body) if body else "{}"}
+          <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"""
+        )
+        
+        # Process the request with proper exception handling
         try:
-            body_bytes = await request.body()
-            if body_bytes:
-                try:
-                    body = json.loads(body_bytes.decode('utf-8'))
-                    # Remove base64 data from logs to keep them clean
-                    if isinstance(body, dict):
-                        body = _sanitize_body_for_logging(body)
-                except json.JSONDecodeError:
-                    body = body_bytes.decode('utf-8', errors='ignore')
+            logger.info(f"Forwarding request to route handler: {request.method} {request.url.path}")
+            response = await call_next(request)
+            
+            # Log response time
+            process_time = time.time() - start_time
+            logger.info(f"Request completed in {process_time:.4f}s | Status: {response.status_code}")
+            logger.info('==============================================================')
+            
+            return response
         except Exception as e:
-            logger.warning(f"Could not read request body: {e}")
-            body = "<unable to read body>"
+            # Log any exceptions that occur during request processing
+            process_time = time.time() - start_time
+            logger.error(f"Request failed after {process_time:.4f}s | Error: {type(e).__name__}: {str(e)}", exc_info=True)
+            logger.info('==============================================================')
+            # Re-raise the exception so FastAPI can handle it properly
+            raise
     
-    # Convert headers to dict for logging (exclude sensitive data if needed)
-    headers_dict = dict(request.headers)
+    def _sanitize_body_for_logging(self, body: dict) -> dict:
+        """
+        Remove base64 encoded data from request body for cleaner logs.
+        Uses deep copy to avoid modifying the original request body.
+        Controlled by ENABLE_LOG_BASE64_DATA config flag.
+        """
+        # If base64 logging is enabled, return body as-is
+        if settings.ENABLE_LOG_BASE64_DATA:
+            return body
+        
+        # Deep copy to ensure we don't modify the original
+        sanitized = copy.deepcopy(body)
+        
+        # Recursively sanitize base64 fields
+        self._sanitize_base64_fields(sanitized)
+        
+        return sanitized
     
-    # Convert query params to dict
-    query_dict = dict(request.query_params)
-    
-    # Log the incoming request
-    logger.info('==============================================================')
-    logger.info(
-        f"""Network incoming logs >>>
-      >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-      request.method          {request.method}
-      request.path            {request.url.path}
-      request.headers         {json.dumps(headers_dict, indent=1)}
-      request.query           {json.dumps(query_dict, indent=1)}
-      request.body            {json.dumps(body, indent=1) if body else "{}"}
-      <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"""
-    )
-    
-    # Process the request
-    response = await call_next(request)
-    
-    # Log response time
-    process_time = time.time() - start_time
-    logger.info(f"Request completed in {process_time:.4f}s | Status: {response.status_code}")
-    logger.info('==============================================================')
-    
-    return response
+    def _sanitize_base64_fields(self, obj: Any) -> None:
+        """
+        Recursively sanitize base64-encoded fields in the object.
+        Modifies the object in-place.
+        
+        Removes base64 data from fields that:
+        - Contain 'logo' in the field name
+        - Contain 'base64' in the field name
+        - Contain 'image' in the field name and have large string values
+        """
+        if isinstance(obj, dict):
+            for key, value in obj.items():
+                # Check if field name suggests base64 data
+                key_lower = key.lower()
+                is_base64_field = any(keyword in key_lower for keyword in ['logo', 'base64', 'image'])
+                
+                # If it's a string value in a base64-related field
+                if is_base64_field and isinstance(value, str):
+                    # Check if it looks like base64 (long string, typically > 100 chars)
+                    if len(value) > 100:
+                        obj[key] = "<base64_data_excluded_from_log>"
+                # Recursively sanitize nested structures
+                elif isinstance(value, (dict, list)):
+                    self._sanitize_base64_fields(value)
+        
+        elif isinstance(obj, list):
+            for item in obj:
+                if isinstance(item, (dict, list)):
+                    self._sanitize_base64_fields(item)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -131,9 +214,8 @@ app.add_middleware(
 )
 
 # Add request logging middleware (applies to all routes)
-@app.middleware("http")
-async def request_logging_middleware(request: Request, call_next):
-    return await log_requests_middleware(request, call_next)
+# Using BaseHTTPMiddleware for proper ASGI compliance and scalability
+app.add_middleware(RequestLoggingMiddleware)
 
 if __name__ == "__main__":
     import uvicorn

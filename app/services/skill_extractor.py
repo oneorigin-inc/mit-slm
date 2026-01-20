@@ -1,12 +1,17 @@
 import logging
 import ssl
-import pandas as pd
 from typing import List, Dict, Any, Optional
+
+# Production imports - LAiSER dependencies required
+import pandas as pd
 from laiser.skill_extractor import Skill_Extractor
 
 # Fix SSL certificate verification issues on macOS
 # NOTE: This disables SSL verification - use only for trusted sources like GitHub
-ssl._create_default_https_context = ssl._create_unverified_context
+try:
+    ssl._create_default_https_context = ssl._create_unverified_context
+except Exception:
+    pass  # Ignore SSL setup errors
 
 logger = logging.getLogger(__name__)
 
@@ -15,25 +20,37 @@ def to_title_case(text: str) -> str:
     return text.title() if text else text
 
 class SkillExtractionService:
-    """Service for extracting skills using LAiSER"""
+    """
+    Service for extracting skills using LAiSER
+    
+    Production service with required LAiSER dependencies.
+    Expects all dependencies (pandas, laiser, scikit-learn, scipy, transformers) to be installed.
+    """
 
     def __init__(self):
         self.extractor: Optional[Skill_Extractor] = None
         self._initialized: bool = False
 
-    async def initialize(self, ai_model_id: str, hf_token: str, use_gpu: bool = True):
+    async def initialize(self, ai_model_id: str, hf_token: str, use_gpu: bool = False):
         """
-        Initialize the skill extractor at startup
-
+        Initialize the LAiSER skill extractor at application startup
+        
         Args:
-            ai_model_id: HuggingFace model ID for skill extraction
-            hf_token: HuggingFace API token
-            use_gpu: Whether to use GPU acceleration
+            ai_model_id: HuggingFace model ID for skill extraction (e.g., 'bert-base-uncased')
+            hf_token: HuggingFace API token (can be empty string for public models)
+            use_gpu: Whether to use GPU acceleration (False for CPU mode)
+            
+        Raises:
+            Exception: If LAiSER initialization fails
         """
-        try:
-            logger.info("Initializing LAiSER Skill Extractor...")
-            logger.info(f"Model: {ai_model_id}, GPU: {use_gpu}")
+        logger.info("=" * 80)
+        logger.info("Initializing LAiSER Skill Extractor (Production Mode)")
+        logger.info(f"Model: {ai_model_id}")
+        logger.info(f"GPU: {use_gpu}")
+        logger.info(f"ESCO Taxonomy: Full (10,000+ skills)")
+        logger.info("=" * 80)
 
+        try:
             self.extractor = Skill_Extractor(
                 AI_MODEL_ID=ai_model_id,
                 HF_TOKEN=hf_token,
@@ -41,39 +58,47 @@ class SkillExtractionService:
             )
 
             self._initialized = True
-            logger.info("LAiSER Skill Extractor initialized successfully!")
+            logger.info("✅ LAiSER Skill Extractor initialized successfully!")
+            logger.info("=" * 80)
 
         except Exception as e:
-            logger.error(f"Failed to initialize LAiSER: {e}")
+            logger.error("=" * 80)
+            logger.error(f"❌ Failed to initialize LAiSER: {e}")
+            logger.error("=" * 80)
             self._initialized = False
             raise
 
     def extract_skills(self, text: str, top_k: int = 10) -> List[Dict[str, Any]]:
         """
-        Extract skills from text using LAiSER's full extractor pipeline
-
+        Extract skills from text using LAiSER's ESCO-aligned extraction pipeline
+        
         Args:
             text: Input text (course content or badge description)
-            top_k: Number of top skills to extract
-
+            top_k: Number of top skills to extract (default: 10)
+            
         Returns:
-            List of dicts with skill metadata:
-            - Research ID: Badge identifier
-            - Raw Skill: Skill name from ESCO taxonomy
+            List of skill dictionaries with Open Badge v3 alignment format:
+            - targetName: Skill name in Title Case
+            - targetDescription: ESCO skill description
+            - targetUrl: ESCO concept URI
             - Skill Tag: ESCO code (e.g., "ESCO.1234")
-            - Knowledge Required: List (empty if use_gpu=False)
-            - Task Abilities: List (empty if use_gpu=False)
             - Correlation Coefficient: Similarity score (0-1)
-
-        Note: With use_gpu=False (current setting), uses fast SkillNer extraction.
-              Knowledge Required and Task Abilities will be empty lists.
+            - type: "Alignment"
+            - targetType: "ESCO:Skill"
+            
+        Note: 
+            - With use_gpu=False: Uses SkillNer (fast CPU-based pattern matching)
+            - With use_gpu=True: Adds LLM enrichment (Knowledge Required, Task Abilities)
         """
         if not self._initialized or not self.extractor:
-            logger.warning("Skill extractor not initialized, returning empty list")
+            logger.error("❌ Skill extractor not initialized - cannot extract skills")
             return []
 
         try:
-            logger.info(f"Extracting top {top_k} skills from text (length: {len(text)} chars)")
+            import time
+            start_time = time.time()
+            
+            logger.info(f"🔍 Extracting top {top_k} skills from text (length: {len(text)} chars)")
 
             # Create DataFrame for LAiSER extractor
             data = pd.DataFrame({
@@ -82,8 +107,6 @@ class SkillExtractionService:
             })
 
             # Use LAiSER's full extractor function
-            # With use_gpu=False: Uses SkillNer (fast pattern matching)
-            # With use_gpu=True: Uses LLM for enrichment (Knowledge Required, Task Abilities)
             result_df = self.extractor.extractor(
                 data=data,
                 id_column='id',
@@ -100,61 +123,72 @@ class SkillExtractionService:
             else:
                 skills = list(result_df) if isinstance(result_df, list) else []
 
-            # Enrich skills with ESCO description and URI
+            # Enrich skills with ESCO metadata and transform to Open Badge v3 format
             enriched_skills = []
             for skill in skills:
-                # Remove Research ID
+                # Remove internal field
                 skill.pop('Research ID', None)
 
                 raw_skill = skill.get('Raw Skill', '')
-                # Convert Raw Skill to Title Case and rename to targetName
+                
+                # Transform to Open Badge v3 alignment format
                 if raw_skill:
                     skill['targetName'] = to_title_case(raw_skill)
                 else:
                     skill['targetName'] = ''
+                
                 # Remove old field name
                 skill.pop('Raw Skill', None)
 
+                # Enrich with ESCO taxonomy data
                 if raw_skill and self.extractor.esco_df is not None:
-                    # Find matching ESCO entry
                     esco_match = self.extractor.esco_df[
                         self.extractor.esco_df['preferredLabel'] == raw_skill
                     ]
                     if not esco_match.empty:
                         esco_row = esco_match.iloc[0]
-                        # Add ESCO description as targetDescription
                         skill['targetDescription'] = esco_row.get('description', '')
-                        # Add ESCO URI as targetUrl
                         skill['targetUrl'] = esco_row.get('conceptUri', '')
                     else:
-                        # No ESCO match - set to empty
                         skill['targetDescription'] = ''
                         skill['targetUrl'] = ''
                 else:
-                    # No raw skill or esco_df not available
                     skill['targetDescription'] = ''
                     skill['targetUrl'] = ''
 
-                # Remove old field names
+                # Remove legacy fields
                 skill.pop('Description', None)
                 skill.pop('URI', None)
 
-                # Add static fields
+                # Add Open Badge v3 alignment fields
                 skill['type'] = 'Alignment'
                 skill['targetType'] = 'ESCO:Skill'
 
                 enriched_skills.append(skill)
 
-            logger.info(f"Successfully extracted {len(enriched_skills)} skills with ESCO metadata")
+            extraction_time = time.time() - start_time
+            logger.info(f"✅ Successfully extracted {len(enriched_skills)} skills with ESCO metadata in {extraction_time:.2f}s")
+            
+            # Log top 3 skills for debugging
+            if enriched_skills:
+                logger.debug("Top 3 skills:")
+                for i, skill in enumerate(enriched_skills[:3], 1):
+                    logger.debug(f"  {i}. {skill['targetName']} (score: {skill.get('Correlation Coefficient', 0):.3f})")
+            
             from typing import cast
             return cast(List[Dict[str, Any]], enriched_skills)
 
         except Exception as e:
-            logger.error(f"Skill extraction failed: {e}", exc_info=True)
+            logger.error(f"❌ Skill extraction failed: {e}", exc_info=True)
             return []
 
     def is_ready(self) -> bool:
-        """Check if the extractor is initialized and ready"""
+        """
+        Check if the LAiSER extractor is initialized and ready for use
+        
+        Returns:
+            bool: True if extractor is initialized, False otherwise
+        """
         return self._initialized and self.extractor is not None
 
 # Global singleton instance

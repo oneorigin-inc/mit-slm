@@ -272,7 +272,16 @@ async def generate_badge(request: GenerateBadgeRequest):
         # ============================================================================
         extracted_skills = None
         
-        if request.enable_skill_extraction and skill_service.is_ready():
+        # Check if skill extraction is requested
+        if request.enable_skill_extraction:
+            # Validate LAiSER service is initialized
+            if not skill_service.is_ready():
+                logger.error(f"Skill extraction requested but LAiSER service not initialized")
+                raise HTTPException(
+                    status_code=503,
+                    detail="Skill extraction service is not available. Service failed to initialize at startup. Check server logs for initialization errors."
+                )
+            
             logger.info(f"Skill extraction enabled for badge {badge_id}")
             try:
                 skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
@@ -288,7 +297,7 @@ async def generate_badge(request: GenerateBadgeRequest):
                 logger.warning(f"Skill extraction failed for badge {badge_id}: {e}")
                 extracted_skills = []
         else:
-            logger.debug("Skill extraction disabled or service not ready")
+            logger.debug("Skill extraction disabled")
 
         # ============================================================================
         # SECTION 4: Build Response
@@ -826,7 +835,21 @@ Parameters:
                             # ============================================================================
                             extracted_skills = None
                             
-                            if request.enable_skill_extraction and skill_service.is_ready():
+                            # Check if skill extraction is requested
+                            if request.enable_skill_extraction:
+                                # Validate LAiSER service is initialized
+                                if not skill_service.is_ready():
+                                    logger.error(f"Skill extraction requested but LAiSER service not initialized (streaming)")
+                                    error_chunk = {
+                                        "type": "error",
+                                        "content": "Skill extraction service is not available. Service failed to initialize at startup.",
+                                        "error_code": "skill_extraction_not_ready",
+                                        "solution": "Check server logs for LAiSER initialization errors",
+                                        "badge_id": badge_id
+                                    }
+                                    yield format_streaming_response(error_chunk)
+                                    return
+                                
                                 logger.info(f"Skill extraction enabled for streaming badge {badge_id}")
                                 try:
                                     skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
@@ -842,7 +865,7 @@ Parameters:
                                     logger.warning(f"Skill extraction failed for streaming badge {badge_id}: {e}")
                                     extracted_skills = []
                             else:
-                                logger.debug("Skill extraction disabled or service not ready (streaming)")
+                                logger.debug("Skill extraction disabled (streaming)")
 
                             # ============================================================================
                             # SECTION 4: Build Response
@@ -1553,11 +1576,11 @@ async def extract_skills_for_badge(badge_id: str, top_k: int = 10):
         # Check if LAiSER is enabled - Note: This endpoint always requires skill extraction
         # For badge generation endpoints, use enable_skill_extraction in request body instead
 
-        # Check if skill service is ready
+        # Check if LAiSER service is initialized and ready
         if not skill_service.is_ready():
             raise HTTPException(
                 status_code=503,
-                detail="Skill extractor is not initialized. Check server logs for initialization errors."
+                detail="Skill extraction service is not available. Service failed to initialize at startup. Check server logs for LAiSER initialization errors."
             )
 
         # Find badge in history
