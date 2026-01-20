@@ -6,7 +6,7 @@ services:
     image: docker-ollama
     container_name: ollama-service
     ports:
-      - "11435:11434"
+      - "11434:11434"
     volumes:
       - ollama-data:/root/.ollama
       # - ../models:/models
@@ -22,7 +22,7 @@ services:
     image: docker-badge-api
     container_name: badge-api
     ports:
-      - "8001:8000"
+      - "8000:8000"
     volumes:
       - ./assets:/app/assets
       - ./logs:/app/logs
