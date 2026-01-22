@@ -57,27 +57,27 @@ sleep 15
 echo "Checking service health..."
 
 BADGE_API_HEALTHY=false
-for i in {1..20}; do
+for i in {1..50}; do
     if curl -s http://localhost:8000/health 2>/dev/null | grep -q "healthy"; then
         echo "Badge API: HEALTHY"
         BADGE_API_HEALTHY=true
         break
     fi
-    echo "Attempt $i/20: Badge API not ready yet..."
-    [ $i -eq 20 ] && { echo "Badge API failed to start"; exit 1; }
+    echo "Attempt $i/50: Badge API not ready yet..."
+    [ $i -eq 50 ] && { echo "Badge API failed to start"; exit 1; }
     sleep 2
 done
 
 # Ollama health check
 OLLAMA_HEALTHY=false
-for i in {1..20}; do
+for i in {1..50}; do
     if curl -s http://localhost:11434/api/version 2>/dev/null | grep -q "version"; then
         echo "Ollama API: HEALTHY"
         OLLAMA_HEALTHY=true
         break
     fi
-    echo "Attempt $i/20: Ollama API not ready yet..."
-    [ $i -eq 20 ] && { echo "Ollama failed to start"; exit 1; }
+    echo "Attempt $i/50: Ollama API not ready yet..."
+    [ $i -eq 50 ] && { echo "Ollama failed to start"; exit 1; }
     sleep 2
 done
 

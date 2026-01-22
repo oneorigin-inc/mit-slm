@@ -31,37 +31,41 @@ A robust API system for generating Open Badge v3 compliant metadata using local 
 
 ```
 /mit-slm-main/
-├── start.sh
-├── Dockerfile
-├── Dockerfile.ollama
-├── docker-compose.yml
+├── start.sh                    # Docker startup script
+├── Dockerfile                  # FastAPI app container
+├── Dockerfile.ollama           # Ollama service container
+├── docker-compose.yml          # Multi-service orchestration
 ├── app/
-│   ├── main.py
+│   ├── main.py                 # FastAPI application entry point
 │   ├── core/
-│   │   ├── config.py
-│   │   └── logging.py
+│   │   ├── config.py           # App settings (Ollama, LAiSER, Badge Image Service)
+│   │   └── logging.py          # Logging configuration
 │   ├── models/
-│   │   ├── badge.py
-│   │   └── requests.py
+│   │   ├── badge.py            # Badge data models
+│   │   └── requests.py         # API request/response models
 │   ├── services/
-│   │   ├── badge_generator.py
-│   │   ├── text_processor.py
-│   │   ├── image_client.py
-│   │   └── ollama_client.py
+│   │   ├── badge_generator.py  # Core badge generation logic
+│   │   ├── text_processor.py   # Text preprocessing utilities
+│   │   ├── badge_image_client.py # Badge image service client
+│   │   ├── ollama_client.py    # Ollama LLM client
+│   │   └── skill_extractor.py  # LAiSER skill extraction service
 │   ├── routers/
-│   │   ├── badges.py
-│   │   └── health.py
+│   │   ├── badges.py           # Badge generation endpoints
+│   │   └── health.py           # Health check endpoints
 │   └── utils/
-│       ├── similarity.py
-│       └── icon_matcher.py
+│       ├── similarity.py       # Text similarity utilities
+│       └── icon_matcher.py     # Icon matching algorithms
 ├── assets/
 │   └── icons/
-│       └── icons.json
+│       └── icons.json          # Icon library metadata
 ├── models/
-│   ├── phi-4-mini-instruct_Q4_K_M.gguf
-│   └── Modelfile
-├── requirements.txt
-├── .env.example
+│   ├── phi-4-mini-instruct_Q4_K_M.gguf  # SLM model file
+│   └── Modelfile               # Ollama model configuration
+├── logs/                       # Application logs directory
+├── .github/
+│   └── workflows/              # GitHub Actions CI/CD
+├── requirements.txt            # Python dependencies (includes LAiSER)
+├── .env.example                # Environment variables template
 ├── .gitignore
 └── README.md
 ```
@@ -430,6 +434,24 @@ ollama create phi3-mini:latest -f models/Modelfile
 docker compose down
 docker compose build
 docker compose up -d
+```
+
+***
+
+## LAiSER Integration
+
+The system integrates [LAiSER](https://github.com/your-org/laiser) (Leveraging AI for Skills Extraction & Research) for skill extraction:
+
+- **skill_extractor.py**: Service wrapper for LAiSER's `Skill_Extractor` class
+- **ESCO Taxonomy**: Maps extracted skills to European Skills, Competences, Qualifications and Occupations framework
+- **Open Badge v3 Alignment**: Outputs skills in OBv3 `Alignment` format with `targetName`, `targetDescription`, `targetUrl`, and `targetType`
+
+**Configuration** (via environment variables or `.env`):
+```
+LAISER_MODEL_ID=bert-base-uncased    # HuggingFace model for embeddings
+LAISER_HF_TOKEN=                      # HuggingFace token (optional for public models)
+LAISER_USE_GPU=false                  # CPU mode by default
+LAISER_TOP_K=10                       # Number of skills to extract
 ```
 
 ***
