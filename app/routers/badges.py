@@ -12,7 +12,7 @@ from pydantic import BaseModel, ValidationError
 import uuid
 
 from app.models.requests import BadgeRequest, RegenerationRequest, AppendDataRequest, FieldRegenerateRequest, GenerateBadgeRequest, ImageConfiguration
-from app.models.badge import BadgeResponse, BadgeValidated
+from app.models.badge import BadgeResponse, BadgeValidated, PreviousBadge, PreviousBadgesResponse
 from app.services.badge_generator import (
     generate_badge_metadata_async,
     generate_badge_metadata_stream_async,
@@ -106,6 +106,277 @@ def decode_logo_base64(logo_base64: Optional[str]) -> Optional[bytes]:
     except Exception as e:
         logger.warning(f"Failed to decode logo base64: {e}")
         return None
+
+
+# ============================================================================
+# Previous Badges Retrieval Endpoint (RAG)
+# ============================================================================
+
+class PreviousBadgesRequest(BaseModel):
+    """Request model for retrieving previous similar badges."""
+    course_input: str
+    count: int = 4  # Number of previous badges to retrieve (default: 4)
+
+
+@router.post("/get-previous-badges", response_model=PreviousBadgesResponse)
+async def get_previous_badges(request: PreviousBadgesRequest):
+    """
+    Retrieve previous similar badges from the database before generating a new one.
+
+    This endpoint uses RAG (Retrieval Augmented Generation) to find badges
+    similar to the provided course content. Returns COMPLETE badge data
+    including image, skills, and configuration.
+
+    Args:
+        request: PreviousBadgesRequest with course_input and optional count
+
+    Returns:
+        PreviousBadgesResponse with list of similar previous badges (complete data)
+    """
+    try:
+        # Import RAG functions
+        from rag.retrieve_ob3 import get_previous_badges as rag_get_previous_badges, is_rag_available
+
+        # Check if RAG is available
+        if not is_rag_available():
+            logger.warning("RAG database not available - returning empty results")
+            return PreviousBadgesResponse(
+                previous_badges=[],
+                total_count=0,
+                query_summary=request.course_input[:100] + "..." if len(request.course_input) > 100 else request.course_input,
+                rag_available=False
+            )
+
+        # Process course input for better matching
+        processed_input = process_course_input(request.course_input)
+
+        # Retrieve similar badges from the database (returns COMPLETE data)
+        logger.info(f"Retrieving {request.count} previous badges for course input")
+        similar_badges = rag_get_previous_badges(processed_input, k=request.count)
+
+        # Convert to response model with COMPLETE data
+        previous_badges = []
+        for badge in similar_badges:
+            # Extract badge data from either new or legacy format
+            if badge.get("credentialSubject"):
+                achievement = badge.get("credentialSubject", {}).get("achievement", {})
+                badge_name = achievement.get("name", badge.get("name", ""))
+                badge_description = achievement.get("description", badge.get("description", ""))
+                criteria = achievement.get("criteria", badge.get("criteria", {}))
+                alignment = achievement.get("alignment", badge.get("alignment", []))
+
+                # Get image - handle both formats:
+                # Format 1: {"id": "data:image/png;base64,...", "type": "Image"}
+                # Format 2: {"id": "url", "image_base64": "..."}
+                image_data = achievement.get("image", {})
+                if image_data:
+                    image_id = image_data.get("id", "")
+                    if image_id and image_id.startswith("data:image"):
+                        image_base64 = image_id  # The id IS the base64 data
+                    else:
+                        image_base64 = image_data.get("image_base64") or badge.get("image_base64")
+                else:
+                    image_base64 = badge.get("image_base64")
+            else:
+                badge_name = badge.get("name", badge.get("badge_name", ""))
+                badge_description = badge.get("description", badge.get("badge_description", ""))
+                criteria = badge.get("criteria", {})
+                alignment = badge.get("alignment", [])
+                image_base64 = badge.get("image_base64")
+
+            previous_badges.append(
+                PreviousBadge(
+                    similarity_score=badge["similarity_score"],
+                    badge_name=badge_name,
+                    badge_description=badge_description,
+                    criteria=criteria,
+                    # Complete data
+                    credentialSubject=badge.get("credentialSubject"),
+                    imageConfig=badge.get("imageConfig"),
+                    image_base64=image_base64,
+                    alignment=alignment,
+                    skills=badge.get("skills", []),
+                    badge_configuration=badge.get("badge_configuration"),
+                    badge_id=badge.get("badge_id"),
+                    metrics=badge.get("metrics"),
+                    enable_image_generation=badge.get("enable_image_generation", False),
+                    enable_skill_extraction=badge.get("enable_skill_extraction", False),
+                    course_input=badge.get("course_input"),
+                    courses=badge.get("courses", [])
+                )
+            )
+
+        # Create query summary for display
+        query_summary = request.course_input[:100] + "..." if len(request.course_input) > 100 else request.course_input
+
+        logger.info(f"Found {len(previous_badges)} similar badges with complete data")
+
+        return PreviousBadgesResponse(
+            previous_badges=previous_badges,
+            total_count=len(previous_badges),
+            query_summary=query_summary,
+            rag_available=True
+        )
+
+    except ImportError as e:
+        logger.error(f"Failed to import RAG module: {e}")
+        return PreviousBadgesResponse(
+            previous_badges=[],
+            total_count=0,
+            query_summary=request.course_input[:100] + "..." if len(request.course_input) > 100 else request.course_input,
+            rag_available=False
+        )
+    except Exception as e:
+        logger.exception(f"Error retrieving previous badges: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve previous badges: {str(e)}"
+        )
+
+
+@router.get("/rag-status")
+async def check_rag_status():
+    """
+    Check the status of the RAG (Retrieval Augmented Generation) system.
+
+    Returns information about whether the FAISS index and metadata are available.
+    """
+    try:
+        from rag.retrieve_ob3 import is_rag_available, INDEX_FILE, META_FILE
+        import os
+
+        index_exists = os.path.exists(INDEX_FILE)
+        meta_exists = os.path.exists(META_FILE)
+
+        status = {
+            "rag_available": is_rag_available(),
+            "index_file": INDEX_FILE,
+            "index_exists": index_exists,
+            "metadata_file": META_FILE,
+            "metadata_exists": meta_exists,
+        }
+
+        # Add file sizes if they exist
+        if index_exists:
+            status["index_size_mb"] = round(os.path.getsize(INDEX_FILE) / (1024 * 1024), 2)
+        if meta_exists:
+            status["metadata_size_mb"] = round(os.path.getsize(META_FILE) / (1024 * 1024), 2)
+
+        return status
+
+    except ImportError as e:
+        return {
+            "rag_available": False,
+            "error": f"Failed to import RAG module: {str(e)}"
+        }
+    except Exception as e:
+        logger.exception(f"Error checking RAG status: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to check RAG status: {str(e)}"
+        )
+
+
+class SaveBadgeToVectorDBRequest(BaseModel):
+    """Request model for saving a badge to the vector database."""
+    badge_response: Dict[str, Any]  # Complete BadgeResponse as dict
+    course_input: str  # Original course input for embedding
+
+
+class SaveBadgeToVectorDBResponse(BaseModel):
+    """Response model for save badge operation."""
+    success: bool
+    message: str
+    badge_name: str
+    total_badges_in_db: int
+
+
+@router.post("/save-badge-to-vectordb", response_model=SaveBadgeToVectorDBResponse)
+async def save_badge_to_vectordb(request: SaveBadgeToVectorDBRequest):
+    """
+    Save a generated badge to the vector database for future retrieval.
+
+    This stores the COMPLETE badge data including:
+    - Badge metadata (name, description, criteria)
+    - Image base64 and configuration
+    - Skills/LAiSER data
+    - Badge configuration
+    - Original course input
+
+    Args:
+        request: SaveBadgeToVectorDBRequest with complete badge response and course input
+
+    Returns:
+        SaveBadgeToVectorDBResponse with success status
+    """
+    try:
+        from rag.update_vector_db import add_badge_to_vector_db
+        from rag.retrieve_ob3 import is_rag_available, reload_metadata, get_metadata_count
+
+        # Check if RAG is available
+        if not is_rag_available():
+            raise HTTPException(
+                status_code=503,
+                detail="RAG database not available. Run build_vector_db.py first to initialize."
+            )
+
+        # Extract badge name for logging
+        badge_data = request.badge_response
+        if badge_data.get("credentialSubject"):
+            achievement = badge_data.get("credentialSubject", {}).get("achievement", {})
+            badge_name = achievement.get("name", "Unknown")
+        else:
+            badge_name = badge_data.get("badge_name", badge_data.get("name", "Unknown"))
+
+        logger.info(f"Saving badge '{badge_name}' to vector database")
+
+        # Save to vector DB (with duplicate detection)
+        save_result = add_badge_to_vector_db(
+            badge_data=badge_data,
+            course_input=request.course_input
+        )
+
+        if not save_result.get("success"):
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to save badge to vector database: {save_result.get('reason', 'Unknown error')}"
+            )
+
+        # Check if badge was actually added or skipped due to duplicate
+        if save_result.get("added"):
+            # Reload metadata to get updated count
+            reload_metadata()
+            total_count = get_metadata_count()
+            logger.info(f"Successfully saved badge '{badge_name}' to vector DB. Total badges: {total_count}")
+            message = f"Badge '{badge_name}' saved successfully to vector database"
+        else:
+            # Badge was skipped (duplicate detected)
+            total_count = get_metadata_count()
+            similar_badge = save_result.get("similar_badge", "existing badge")
+            logger.info(f"Badge '{badge_name}' skipped - too similar to '{similar_badge}'")
+            message = f"Badge '{badge_name}' not added - too similar to existing badge '{similar_badge}'"
+
+        return SaveBadgeToVectorDBResponse(
+            success=True,
+            message=message,
+            badge_name=badge_name,
+            total_badges_in_db=total_count
+        )
+
+    except HTTPException:
+        raise
+    except ImportError as e:
+        logger.error(f"Failed to import RAG module: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"RAG module not available: {str(e)}"
+        )
+    except Exception as e:
+        logger.exception(f"Error saving badge to vector DB: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save badge to vector database: {str(e)}"
+        )
 
 
 @router.post("/generate-badge-suggestions", response_model=BadgeResponse)
@@ -607,7 +878,7 @@ async def generate_badge_stream(request: GenerateBadgeRequest):
         # SECTION 1: Badge Metadata Generation (Primary Job - Always runs)
         # ============================================================================
         badge_params = get_badge_configuration(request)
-        
+
         from app.services.text_processor import process_course_input
         processed_content = process_course_input(request.course_input)
 
@@ -630,20 +901,20 @@ Parameters:
 
         # Minimal prompt - Modelfile handles all complex instructions
         prompt = user_content
-        
-        
+
+
          # Import ollama service
         from app.services.ollama_client import ollama_client
         MODEL_CONFIG = settings.MODEL_CONFIG
 
         # Get user provided context length or fallback to config default
         context_length = request.context_length or MODEL_CONFIG.get("num_ctx", 2048)
-        
+
         async def generate_stream_response():
             nonlocal request_id
             accumulated_text = ""
             token_usage_data = None  # Track token usage
-            
+
             try:
                 # Call the service layer for streaming generation
                 async for chunk in ollama_client.generate_stream(
@@ -1012,7 +1283,286 @@ Parameters:
         # Handle other errors
         log_response("Streaming badge suggestions generation", False, request_id)
         raise handle_error(e, "Streaming badge suggestions generation", request_id)
-    
+
+
+# ============================================================================
+# STREAM-RAG ENDPOINT: Badge Generation + Auto-Save to Vector DB
+# ============================================================================
+
+@router.post("/generate-badge-suggestions/stream-rag")
+async def generate_badge_stream_rag(request: GenerateBadgeRequest):
+    """
+    Generate badge suggestions with streaming response and auto-save to vector DB.
+
+    Flow:
+    1. Generate new badge with streaming tokens
+    2. Auto-save the new badge to vector DB for future retrieval
+
+    Streaming chunks:
+    - type: "token" - Individual generation tokens
+    - type: "final" - Complete generated badge + vector_db_saved status
+    """
+    start_time = time.time()
+    request_id = None
+    badge_id = str(uuid.uuid4())
+
+    try:
+        # Check if RAG is available for saving
+        rag_available = False
+        try:
+            from rag.retrieve_ob3 import is_rag_available
+            rag_available = is_rag_available()
+        except Exception as rag_error:
+            logger.warning(f"RAG: Failed to check availability: {rag_error}")
+
+        # ============================================================================
+        # SECTION 1: Badge Metadata Generation Setup
+        # ============================================================================
+        badge_params = get_badge_configuration(request)
+        processed_content = process_course_input(request.course_input)
+
+        user_content = f"""Course Content: {processed_content}
+
+Parameters:
+- Style: {settings.STYLE_DESCRIPTIONS.get(badge_params['badge_style'])}
+- Tone: {settings.TONE_DESCRIPTIONS.get(badge_params['badge_tone'])}
+- Level: {settings.LEVEL_DESCRIPTIONS.get(badge_params['badge_level'])}
+- Criterion Style: {settings.CRITERION_TEMPLATES.get(badge_params['criterion_style'])}"""
+
+        if request.badge_configuration.institution:
+            user_content += f"\n- Institution: {request.badge_configuration.institution}, Highlight institutional credibility and authority in badge name and badge description briefly."
+
+        if request.badge_configuration.custom_instructions:
+            user_content += f"\n- Special Instructions: {request.badge_configuration.custom_instructions}, "
+
+        user_content += '\n\nGenerate badge JSON with exact schema {"badge_name": "string", "badge_description": "string", "criteria": {"narrative": "string"}}:'
+
+        prompt = user_content
+
+        from app.services.ollama_client import ollama_client
+        MODEL_CONFIG = settings.MODEL_CONFIG
+        context_length = request.context_length or MODEL_CONFIG.get("num_ctx", 2048)
+
+        async def generate_stream_rag_response():
+            nonlocal request_id
+            accumulated_text = ""
+            token_usage_data = None
+            vector_db_saved = False
+
+            try:
+                # ============================================================
+                # STEP 1: Generate new badge with streaming
+                # ============================================================
+                async for chunk in ollama_client.generate_stream(
+                    content=prompt,
+                    temperature=MODEL_CONFIG.get("temperature", 0.2),
+                    max_tokens=MODEL_CONFIG.get("num_predict", 1024),
+                    top_p=MODEL_CONFIG.get("top_p", 0.8),
+                    top_k=MODEL_CONFIG.get("top_k", 30),
+                    repeat_penalty=MODEL_CONFIG.get("repeat_penalty", 1.05),
+                    context_length=context_length
+                ):
+                    if chunk.get("request_id") and not request_id:
+                        request_id = chunk.get("request_id")
+
+                    if chunk.get("metrics"):
+                        token_usage_data = chunk.get("metrics")
+
+                    if chunk.get("type") == "token":
+                        accumulated_text += chunk.get("content", "")
+                        yield format_streaming_response({
+                            "type": "token",
+                            "content": chunk.get("content", ""),
+                            "accumulated": accumulated_text,
+                            "badge_id": badge_id
+                        })
+
+                    elif chunk.get("type") == "final":
+                        try:
+                            raw_response = accumulated_text
+                            json_start = raw_response.find('```json')
+                            json_end = raw_response.find('```', json_start + 7)
+
+                            if json_start != -1 and json_end != -1:
+                                json_content = raw_response[json_start + 7:json_end].strip()
+                                badge_json = json.loads(json_content)
+                            else:
+                                badge_json = extract_json_from_response(raw_response)
+
+                            badge_json = _normalize_badge_json(badge_json)
+                            badge_json["selected_parameters"] = badge_params
+                            badge_json["processed_course_input"] = processed_content
+
+                            validated = BadgeValidated(
+                                badge_name=badge_json.get("badge_name", ""),
+                                badge_description=badge_json.get("badge_description", ""),
+                                criteria=badge_json.get("criteria", {}),
+                                raw_model_output=raw_response
+                            )
+
+                            # Image generation
+                            image_base64 = None
+                            image_config = None
+                            image_type = None
+
+                            if request.image_generation.enable_image_generation:
+                                img_config = request.image_generation.image_configuration or ImageConfiguration()
+                                image_type = "icon_based" if img_config.image_type == "icon_based" else "text_overlay"
+
+                                if image_type == "text_overlay":
+                                    optimized_text = await optimize_badge_text({
+                                        "badge_name": validated.badge_name,
+                                        "badge_description": validated.badge_description,
+                                        "institution": request.badge_configuration.institution or ""
+                                    })
+                                    image_base64, image_config = await call_badge_image_service(
+                                        image_type="text_overlay",
+                                        badge_name=validated.badge_name,
+                                        badge_description=validated.badge_description,
+                                        short_title=optimized_text.get("short_title", validated.badge_name),
+                                        achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
+                                        institution=request.badge_configuration.institution,
+                                        institute_url=request.badge_configuration.institute_url,
+                                        image_configuration=img_config
+                                    )
+                                else:
+                                    image_base64, image_config = await call_badge_image_service(
+                                        image_type="icon_based",
+                                        badge_name=validated.badge_name,
+                                        badge_description=validated.badge_description,
+                                        institution=request.badge_configuration.institution,
+                                        institute_url=request.badge_configuration.institute_url,
+                                        image_configuration=img_config
+                                    )
+
+                            # Skill extraction
+                            extracted_skills = None
+                            if request.enable_skill_extraction and skill_service.is_ready():
+                                try:
+                                    skill_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
+                                    extracted_skills = skill_service.extract_skills(skill_text, top_k=settings.LAISER_TOP_K)
+                                except Exception as skill_err:
+                                    logger.warning(f"Skill extraction failed: {skill_err}")
+
+                            # Build achievement
+                            achievement = {
+                                "criteria": validated.criteria,
+                                "description": validated.badge_description,
+                                "name": validated.badge_name
+                            }
+                            if image_base64:
+                                achievement["image"] = {
+                                    "id": f"data:image/png;base64,{image_base64}" if not image_base64.startswith("data:") else image_base64,
+                                    "type": "Image"
+                                }
+                            if extracted_skills:
+                                achievement["alignment"] = [
+                                    {
+                                        "type": "Alignment",
+                                        "targetType": skill.get("type", "Skill"),
+                                        "targetName": skill.get("skill_name", skill.get("name", "")),
+                                        "targetDescription": skill.get("description", ""),
+                                        "targetUrl": skill.get("url", "")
+                                    }
+                                    for skill in extracted_skills
+                                ]
+
+                            result = BadgeResponse(
+                                credentialSubject={"achievement": achievement},
+                                imageConfig=image_config,
+                                badge_id=badge_id,
+                                metrics=token_usage_data or {},
+                                skills=extracted_skills,
+                                badge_configuration=request.badge_configuration.dict(),
+                                enable_image_generation=request.image_generation.enable_image_generation,
+                                enable_skill_extraction=request.enable_skill_extraction
+                            )
+
+                            # ============================================================
+                            # STEP 2: Auto-save to Vector DB (with duplicate detection)
+                            # ============================================================
+                            duplicate_of = None
+                            try:
+                                if rag_available:
+                                    from rag.update_vector_db import add_badge_to_vector_db
+                                    from rag.retrieve_ob3 import reload_metadata
+
+                                    result_dict = result.dict() if hasattr(result, 'dict') else result
+                                    save_result = add_badge_to_vector_db(
+                                        badge_data=result_dict,
+                                        course_input=request.course_input
+                                    )
+                                    if save_result.get("success") and save_result.get("added"):
+                                        reload_metadata()
+                                        vector_db_saved = True
+                                        logger.info(f"RAG: Auto-saved badge '{validated.badge_name}' to vector DB")
+                                    elif save_result.get("success") and not save_result.get("added"):
+                                        # Duplicate detected
+                                        duplicate_of = save_result.get("similar_badge")
+                                        logger.info(f"RAG: Badge '{validated.badge_name}' not saved - duplicate of '{duplicate_of}'")
+                            except Exception as save_err:
+                                logger.warning(f"RAG: Failed to auto-save badge: {save_err}")
+
+                            # Store in history
+                            history_entry = {
+                                "id": len(badge_history) + 1,
+                                "timestamp": datetime.now().isoformat(),
+                                "course_input": request.course_input[:100] + "..." if len(request.course_input) > 100 else request.course_input,
+                                "badge_id": badge_id,
+                                "result": result,
+                                "generation_time": time.time() - start_time,
+                                "vector_db_saved": vector_db_saved
+                            }
+                            badge_history.append(history_entry)
+                            if len(badge_history) > 50:
+                                badge_history.pop(0)
+
+                            # Stream final result
+                            result_dict = result.dict() if hasattr(result, 'dict') else result
+                            final_response = {
+                                "type": "final",
+                                "content": result_dict,
+                                "badge_id": badge_id,
+                                "generation_time": time.time() - start_time,
+                                "vector_db_saved": vector_db_saved,
+                                "metrics": token_usage_data or {}
+                            }
+                            if duplicate_of:
+                                final_response["duplicate_of"] = duplicate_of
+                            yield format_streaming_response(final_response)
+
+                            logger.info(f"RAG Stream: Generated badge '{validated.badge_name}' | saved={vector_db_saved} | duplicate_of={duplicate_of}")
+
+                        except Exception as e:
+                            logger.error(f"Error processing final response: {e}", exc_info=True)
+                            yield format_streaming_response({
+                                "type": "error",
+                                "content": f"Error processing response: {str(e)}",
+                                "badge_id": badge_id
+                            })
+
+                    elif chunk.get("type") == "error":
+                        yield format_streaming_response(chunk)
+
+                log_response("RAG streaming badge generation", True, request_id)
+
+            except Exception as e:
+                yield format_streaming_response({
+                    "type": "error",
+                    "content": f"RAG streaming failed: {str(e)}",
+                    "badge_id": badge_id
+                })
+                log_response("RAG streaming badge generation", False, request_id)
+
+        return create_streaming_response(generate_stream_rag_response())
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Validation error: {str(e)}")
+    except Exception as e:
+        log_response("RAG streaming badge generation", False, request_id)
+        raise handle_error(e, "RAG streaming badge generation", request_id)
+
+
 class BadgeRegenerateRequest(BaseModel):
     """Request model for badge regeneration using custom instructions"""
     custom_instructions: str  # e.g., "give badge name", "make it more concise", "focus on leadership"
