@@ -26,6 +26,7 @@ services:
     volumes:
       - ./assets:/app/assets
       - ./logs:/app/logs
+      - ./rag:/app/rag
     environment:
       - OLLAMA_API_URL=http://ollama:11434/api/generate
       - BADGE_IMAGE_SERVICE_URL=http://host.docker.internal:3001  # For external image service on host

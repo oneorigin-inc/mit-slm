@@ -25,7 +25,7 @@ def _load_resources() -> bool:
 
     if _model is None:
         logger.info("Loading sentence transformer model...")
-        _model = SentenceTransformer("sentence-transformers/all-mpnet-base-v2")
+        _model = SentenceTransformer("sentence-transformers/all-mpnet-base-v2", device="cpu")
 
     if _index is None:
         if not os.path.exists(INDEX_FILE):

@@ -71,7 +71,7 @@ def format_badge_for_embedding(badge_data: Dict[str, Any]) -> str:
 
 
 # Default similarity threshold - badges with similarity above this are considered duplicates
-SIMILARITY_THRESHOLD = 0.95
+SIMILARITY_THRESHOLD = 0.99
 
 
 def add_badge_to_vector_db(badge_data: Dict[str, Any], model=None, course_input: str = None, similarity_threshold: float = None):
@@ -115,7 +115,7 @@ def add_badge_to_vector_db(badge_data: Dict[str, Any], model=None, course_input:
         # Load embedding model if not provided
         if model is None:
             print(f"Loading embedding model: {EMBED_MODEL}")
-            model = SentenceTransformer(EMBED_MODEL)
+            model = SentenceTransformer(EMBED_MODEL, device="cpu")
 
         # Add course_input to badge_data for embedding if provided
         embedding_data = badge_data.copy()
@@ -287,7 +287,7 @@ def batch_add_badges(badges: list, model=None):
         # Load model once
         if model is None:
             print(f"Loading embedding model: {EMBED_MODEL}")
-            model = SentenceTransformer(EMBED_MODEL)
+            model = SentenceTransformer(EMBED_MODEL, device="cpu")
 
         # Format all badges for embedding
         texts = [format_badge_for_embedding(badge) for badge in badges]

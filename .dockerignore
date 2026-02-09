@@ -1,0 +1,17 @@
+.git/
+.gitignore
+.DS_Store
+.vscode/
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.log
+logs/
+*.md
+*.gguf
+claude.md
+docker-compose.yml
+Dockerfile.ollama
+skill_db_relax_20.json
+token_dist.json
