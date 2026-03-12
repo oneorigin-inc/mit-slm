@@ -55,7 +55,7 @@ spacy>=3.0.0,<4.0.0
 # LAiSER Dependencies
 # ============================================
 skillNer==1.0.3
-laiser>=0.1.0
+laiser==0.3.2
 
 # ============================================
 # Vector Search (Required for LAiSER)
