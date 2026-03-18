@@ -242,6 +242,9 @@ async def call_model_with_params_async(prompt: str, **kwargs) -> tuple[str, Dict
 
 async def preload_model() -> bool:
     """Preload the model into memory using streaming to minimize resource usage"""
+    if not settings.OLLAMA_PRELOAD:
+        logger.info("Model preload disabled (OLLAMA_PRELOAD=false)")
+        return True
     try:
         logger.info(f"Preloading model {settings.MODEL_NAME}...")
         # Use streaming with a minimal prompt to load model
