@@ -24,6 +24,7 @@ class OllamaClient:
     def __init__(self):
         self.api_url = settings.OLLAMA_API_URL
         self.model_config = settings.MODEL_CONFIG
+        self._headers = {"Authorization": f"Bearer {settings.OLLAMA_AUTH_TOKEN}"} if settings.OLLAMA_AUTH_TOKEN else {}
 
     async def generate_stream(
         self, 
@@ -62,7 +63,7 @@ class OllamaClient:
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
-                async with client.stream("POST", self.api_url, json=payload) as response:
+                async with client.stream("POST", self.api_url, json=payload, headers=self._headers) as response:
                     response.raise_for_status()
 
                     async for line in response.aiter_lines():
@@ -159,7 +160,7 @@ class OllamaClient:
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 logger.info(f"Making non-streaming request {request_id} to model {settings.MODEL_NAME} with keep_alive={keep_alive}")
-                response = await client.post(self.api_url, json=payload)
+                response = await client.post(self.api_url, json=payload, headers=self._headers)
                 response.raise_for_status()
                 result = response.json()
 
