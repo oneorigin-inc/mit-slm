@@ -27,7 +27,8 @@ from app.services.badge_generator import (
 from app.services.badge_image_client import call_badge_image_service
 from app.services.text_processor import process_course_input
 from app.core.config import settings
-from app.services.skill_extractor import skill_service
+# LAiSER backend integration temporarily disabled (handled at frontend)
+# from app.services.skill_extractor import skill_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -268,36 +269,40 @@ async def generate_badge(request: GenerateBadgeRequest):
         #     )
 
         # ============================================================================
-        # SECTION 3: Skill Extraction (Conditional)
+        # SECTION 3: Skill Extraction (Disabled - handled by frontend)
         # ============================================================================
         extracted_skills = None
-        
-        # Check if skill extraction is requested
-        if request.enable_skill_extraction:
-            # Validate LAiSER service is initialized
-            if not skill_service.is_ready():
-                logger.error(f"Skill extraction requested but LAiSER service not initialized")
-                raise HTTPException(
-                    status_code=503,
-                    detail="Skill extraction service is not available. Service failed to initialize at startup. Check server logs for initialization errors."
-                )
-            
-            logger.info(f"Skill extraction enabled for badge {badge_id}")
-            try:
-                skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
 
-                extracted_skills = skill_service.extract_skills(
-                    text=skill_extraction_text,
-                    top_k=settings.LAISER_TOP_K
-                )
-
-                logger.info(f"Extracted {len(extracted_skills)} skills for badge {badge_id}")
-
-            except Exception as e:
-                logger.warning(f"Skill extraction failed for badge {badge_id}: {e}")
-                extracted_skills = []
-        else:
-            logger.debug("Skill extraction disabled")
+        # Backend LAiSER integration is disabled. Skill extraction, if any, is
+        # now handled at the frontend level. Previous implementation (kept for
+        # reference, no longer executed):
+        #
+        # # Check if skill extraction is requested
+        # if request.enable_skill_extraction:
+        #     # Validate LAiSER service is initialized
+        #     if not skill_service.is_ready():
+        #         logger.error(f"Skill extraction requested but LAiSER service not initialized")
+        #         raise HTTPException(
+        #             status_code=503,
+        #             detail="Skill extraction service is not available. Service failed to initialize at startup. Check server logs for initialization errors."
+        #         )
+        #
+        #     logger.info(f"Skill extraction enabled for badge {badge_id}")
+        #     try:
+        #         skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
+        #
+        #         extracted_skills = skill_service.extract_skills(
+        #             text=skill_extraction_text,
+        #             top_k=settings.LAISER_TOP_K
+        #         )
+        #
+        #         logger.info(f"Extracted {len(extracted_skills)} skills for badge {badge_id}")
+        #
+        #     except Exception as e:
+        #         logger.warning(f"Skill extraction failed for badge {badge_id}: {e}")
+        #         extracted_skills = []
+        # else:
+        #     logger.debug("Skill extraction disabled")
 
         # ============================================================================
         # SECTION 4: Build Response
@@ -325,10 +330,11 @@ async def generate_badge(request: GenerateBadgeRequest):
             imageConfig=image_config,  # Will be None if image generation disabled
             badge_id=badge_id,
             metrics=metrics,
-            skills=extracted_skills,
+            # LAiSER/skills handled at frontend - omit from backend response
+            # skills=extracted_skills,
             badge_configuration=request.badge_configuration.dict(),  # Include badge configuration in response
             enable_image_generation=request.image_generation.enable_image_generation,
-            enable_skill_extraction=request.enable_skill_extraction
+            # enable_skill_extraction=request.enable_skill_extraction
         )
 
         # Store in history with the full result for editing capability
@@ -831,41 +837,51 @@ Parameters:
                             #     image_base64, image_config = await generate_badge_with_text(...)
 
                             # ============================================================================
-                            # SECTION 3: Skill Extraction (Conditional)
+                            # SECTION 3: Skill Extraction (Disabled - handled by frontend)
                             # ============================================================================
                             extracted_skills = None
-                            
-                            # Check if skill extraction is requested
-                            if request.enable_skill_extraction:
-                                # Validate LAiSER service is initialized
-                                if not skill_service.is_ready():
-                                    logger.error(f"Skill extraction requested but LAiSER service not initialized (streaming)")
-                                    error_chunk = {
-                                        "type": "error",
-                                        "content": "Skill extraction service is not available. Service failed to initialize at startup.",
-                                        "error_code": "skill_extraction_not_ready",
-                                        "solution": "Check server logs for LAiSER initialization errors",
-                                        "badge_id": badge_id
-                                    }
-                                    yield format_streaming_response(error_chunk)
-                                    return
-                                
-                                logger.info(f"Skill extraction enabled for streaming badge {badge_id}")
-                                try:
-                                    skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
 
-                                    extracted_skills = skill_service.extract_skills(
-                                        text=skill_extraction_text,
-                                        top_k=settings.LAISER_TOP_K
-                                    )
-
-                                    logger.info(f"Extracted {len(extracted_skills)} skills for streaming badge {badge_id}")
-
-                                except Exception as e:
-                                    logger.warning(f"Skill extraction failed for streaming badge {badge_id}: {e}")
-                                    extracted_skills = []
-                            else:
-                                logger.debug("Skill extraction disabled (streaming)")
+                            # Backend LAiSER integration is disabled. Skill extraction, if any, is
+                            # now handled at the frontend level. Previous implementation (kept for
+                            # reference, no longer executed):
+                            #
+                            # # Check if skill extraction is requested
+                            # if request.enable_skill_extraction:
+                            #     # Validate LAiSER service is initialized
+                            #     if not skill_service.is_ready():
+                            #         logger.error(
+                            #             f"Skill extraction requested but LAiSER service not initialized (streaming)"
+                            #         )
+                            #         error_chunk = {
+                            #             "type": "error",
+                            #             "content": "Skill extraction service is not available. Service failed to initialize at startup.",
+                            #             "error_code": "skill_extraction_not_ready",
+                            #             "solution": "Check server logs for LAiSER initialization errors",
+                            #             "badge_id": badge_id
+                            #         }
+                            #         yield format_streaming_response(error_chunk)
+                            #         return
+                            #
+                            #     logger.info(f"Skill extraction enabled for streaming badge {badge_id}")
+                            #     try:
+                            #         skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
+                            #
+                            #         extracted_skills = skill_service.extract_skills(
+                            #             text=skill_extraction_text,
+                            #             top_k=settings.LAISER_TOP_K
+                            #         )
+                            #
+                            #         logger.info(
+                            #             f"Extracted {len(extracted_skills)} skills for streaming badge {badge_id}"
+                            #         )
+                            #
+                            #     except Exception as e:
+                            #         logger.warning(
+                            #             f"Skill extraction failed for streaming badge {badge_id}: {e}"
+                            #         )
+                            #         extracted_skills = []
+                            # else:
+                            #     logger.debug("Skill extraction disabled (streaming)")
 
                             # ============================================================================
                             # SECTION 4: Build Response
@@ -893,10 +909,11 @@ Parameters:
                                 imageConfig=image_config,  # Will be None if image generation disabled
                                 badge_id=badge_id,
                                 metrics=token_usage_data or {},
-                                skills=extracted_skills,
+                                # LAiSER/skills handled at frontend - omit from backend response
+                                # skills=extracted_skills,
                                 badge_configuration=request.badge_configuration.dict(),  # Include badge configuration in response
                                 enable_image_generation=request.image_generation.enable_image_generation,
-                                enable_skill_extraction=request.enable_skill_extraction
+                                # enable_skill_extraction=request.enable_skill_extraction
                             )
 
                             # Store in history
@@ -1563,66 +1580,16 @@ async def regenerate_field(request: FieldRegenerateRequest):
 @router.post("/extract-skills/{badge_id}")
 async def extract_skills_for_badge(badge_id: str, top_k: int = 10):
     """
-    Extract skills for an existing badge using LAiSER
+    [DISABLED] Extract skills for an existing badge using LAiSER.
 
-    Args:
-        badge_id: ID of the badge to extract skills from
-        top_k: Number of top skills to extract (default: 10)
-
-    Returns:
-        JSON with extracted skills and metadata
+    Backend LAiSER integration is currently disabled because skill extraction
+    is handled at the frontend level. This endpoint is kept for reference only
+    and does not perform any LAiSER computation.
     """
-    try:
-        # Check if LAiSER is enabled - Note: This endpoint always requires skill extraction
-        # For badge generation endpoints, use enable_skill_extraction in request body instead
-
-        # Check if LAiSER service is initialized and ready
-        if not skill_service.is_ready():
-            raise HTTPException(
-                status_code=503,
-                detail="Skill extraction service is not available. Service failed to initialize at startup. Check server logs for LAiSER initialization errors."
-            )
-
-        # Find badge in history
-        badge_entry = get_badge_from_history(badge_id)
-
-        # Extract badge data
-        result = badge_entry.get("result", {})
-        if hasattr(result, 'dict'):
-            result_dict = result.dict()
-        elif hasattr(result, '__dict__'):
-            result_dict = result.__dict__
-        else:
-            result_dict = result
-
-        achievement = result_dict.get("credentialSubject", {}).get("achievement", {})
-
-        # Combine course input and badge data for skill extraction
-        course_input = badge_entry.get("course_input", "")
-        badge_name = achievement.get("name", "")
-        badge_description = achievement.get("description", "")
-
-        skill_extraction_text = f"{course_input}\n\nBadge: {badge_name}\n{badge_description}"
-
-        # Extract skills
-        logger.info(f"Extracting {top_k} skills for badge {badge_id}")
-        skills = skill_service.extract_skills(skill_extraction_text, top_k=top_k)
-
-        return {
-            "badge_id": badge_id,
-            "skills": skills,
-            "count": len(skills),
-            "message": f"Successfully extracted {len(skills)} skills"
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"Unexpected error in /extract-skills: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Skill extraction error: {str(e)}"
-        )
+    raise HTTPException(
+        status_code=503,
+        detail="Backend LAiSER skill extraction is disabled. Skill extraction is handled by the frontend."
+    )
 
 
 @router.get("/ollama-status")
