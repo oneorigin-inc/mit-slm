@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     # Ollama Configuration
     OLLAMA_API_URL: str = os.getenv("OLLAMA_API_URL", "http://localhost:11434/api/generate")
     MODEL_NAME: str = os.getenv("MODEL_NAME", "phi4-chat:latest")
+    OLLAMA_AUTH_TOKEN: str = os.getenv("OLLAMA_AUTH_TOKEN", "")
+    OLLAMA_PRELOAD: bool = os.getenv("OLLAMA_PRELOAD", "true").lower() == "true"
 
     # Badge Image Service Configuration
     BADGE_IMAGE_SERVICE_URL: str = os.getenv("BADGE_IMAGE_SERVICE_URL", "http://localhost:3001")
