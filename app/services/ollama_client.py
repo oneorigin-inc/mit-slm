@@ -30,7 +30,7 @@ class OllamaClient:
         self, 
         content: str, 
         temperature: float = 0.10, 
-        max_tokens: int = 400,
+        max_tokens: int = 1024,
         top_p: float = 0.9, 
         top_k: int = 50, 
         repeat_penalty: float = 1.05,
@@ -46,7 +46,7 @@ class OllamaClient:
             "model": settings.MODEL_NAME,
             "prompt": content,
             "stream": True,
-            "keep_alive": "6h",
+            "keep_alive": "24h",
             "options": {
                 "temperature": temperature,
                 "num_predict": max_tokens,

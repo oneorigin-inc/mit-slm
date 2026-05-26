@@ -121,7 +121,9 @@ async def generate_badge(request: GenerateBadgeRequest):
         # ============================================================================
         # SECTION 1: Badge Metadata Generation (Primary Job - Always runs)
         # ============================================================================
-        logger.info(f"Starting badge metadata generation for badge {badge_id}")
+        _lang_code = (request.badge_configuration.language or "en").lower()
+        _lang_name = settings.SUPPORTED_LANGUAGES.get(_lang_code, "English")
+        logger.info(f"Starting badge metadata generation for badge {badge_id} | language={_lang_code} ({_lang_name})")
         
         # Generate badge metadata with random parameters
         badge_json = await generate_badge_metadata_async(request)
@@ -141,7 +143,7 @@ async def generate_badge(request: GenerateBadgeRequest):
         # Extract metrics
         metrics = badge_json.get("metrics", {})
         
-        logger.info(f"Badge metadata generated successfully: '{validated.badge_name}'")
+        logger.info(f"Badge metadata generated successfully: '{validated.badge_name}' | language={_lang_code} ({_lang_name})")
 
         # ============================================================================
         # SECTION 2: Image Generation (Conditional - Calls External Service)
@@ -172,24 +174,30 @@ async def generate_badge(request: GenerateBadgeRequest):
             # Generate image based on type
             if image_type_selected == "text_overlay":
                 # Use SLM to optimize text for image overlay
-                optimized_text = await optimize_badge_text({
-                    "badge_name": validated.badge_name,
-                    "badge_description": validated.badge_description,
-                    "institution": request.badge_configuration.institution or ""
-                })
-                
+                _lang_name = settings.SUPPORTED_LANGUAGES.get(
+                    (request.badge_configuration.language or "en").lower(), "English"
+                )
+                optimized_text = await optimize_badge_text(
+                    {
+                        "badge_name": validated.badge_name,
+                        "badge_description": validated.badge_description,
+                        "institution": request.badge_configuration.institution or ""
+                    },
+                    language=_lang_name,
+                )
+
                 # Call external service with optimized text
                 image_base64, image_config = await call_badge_image_service(
                     image_type="text_overlay",
                     badge_name=validated.badge_name,
                     badge_description=validated.badge_description,
                     short_title=optimized_text.get("short_title", validated.badge_name),
-                    achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
+                    achievement_phrase=optimized_text.get("achievement_phrase", validated.badge_name),
                     institution=request.badge_configuration.institution,
                     institute_url=request.badge_configuration.institute_url,
                     image_configuration=img_config
                 )
-            
+
             else:  # icon_based
                 # Call external service for icon-based badge (icon matching done externally)
                 image_base64, image_config = await call_badge_image_service(
@@ -341,6 +349,8 @@ async def generate_badge(request: GenerateBadgeRequest):
             "user_badge_tone": request.badge_configuration.badge_tone,
             "user_criterion_style": request.badge_configuration.criterion_style,
             "user_badge_level": request.badge_configuration.badge_level,
+            "language": _lang_code,
+            "language_name": _lang_name,
             "custom_instructions": request.badge_configuration.custom_instructions,
             "institution": request.badge_configuration.institution,
             "selected_image_type": image_type_selected,
@@ -351,12 +361,12 @@ async def generate_badge(request: GenerateBadgeRequest):
             "metrics": metrics
         }
         badge_history.append(history_entry)
-        
+
         if len(badge_history) > 50:
             badge_history.pop(0)
 
         badge_params = badge_json.get("selected_parameters", {})
-        logger.info(f"Generated badge ID {badge_id}: '{validated.badge_name}' with parameters: {badge_params}")
+        logger.info(f"Generated badge ID {badge_id}: '{validated.badge_name}' | language={_lang_code} ({_lang_name}) | parameters: {badge_params}")
         return result
 
     except HTTPException:
@@ -607,12 +617,17 @@ async def generate_badge_stream(request: GenerateBadgeRequest):
         # SECTION 1: Badge Metadata Generation (Primary Job - Always runs)
         # ============================================================================
         badge_params = get_badge_configuration(request)
-        
+        _stream_lang_code = (request.badge_configuration.language or "en").lower()
+        _stream_lang_name = settings.SUPPORTED_LANGUAGES.get(_stream_lang_code, "English")
+        logger.info(f"Starting streaming badge metadata generation for badge {badge_id} | language={_stream_lang_code} ({_stream_lang_name})")
+
         from app.services.text_processor import process_course_input
         processed_content = process_course_input(request.course_input)
 
         # Build user content - Modelfile handles system instructions
-        user_content = f"""Course Content: {processed_content}
+        user_content = f"""[LANGUAGE: {_stream_lang_name}]
+
+Course Content: {processed_content}
 
 Parameters:
 - Style: {settings.STYLE_DESCRIPTIONS.get(badge_params['badge_style'])}
@@ -626,7 +641,9 @@ Parameters:
         if request.badge_configuration.custom_instructions:
             user_content += f"\n- Special Instructions: {request.badge_configuration.custom_instructions}, "
 
-        user_content += '\n\nGenerate badge JSON with exact schema {"badge_name": "string", "badge_description": "string", "criteria": {"narrative": "string"}}:'
+        user_content += f"\n\nCRITICAL: ALL badge text values MUST be written in {_stream_lang_name}, even if the course content above is in a different language."
+        user_content += "\n\nRespond with ONLY a JSON object. Start your response with `{` — no intro text, no explanation, no markdown fences."
+        user_content += '\nSchema: {"badge_name": "...", "badge_description": "...", "criteria": {"narrative": "..."}}'
 
         # Minimal prompt - Modelfile handles all complex instructions
         prompt = user_content
@@ -682,17 +699,9 @@ Parameters:
                             
                             # Try to extract JSON from the accumulated text
                             try:
-                                # Look for JSON content between ```json and ```
-                                json_start = raw_response.find('```json')
-                                json_end = raw_response.find('```', json_start + 7)
-                                
-                                if json_start != -1 and json_end != -1:
-                                    json_content = raw_response[json_start + 7:json_end].strip()
-                                    badge_json = json.loads(json_content)
-                                else:
-                                    # Fallback: try to extract JSON from the full response
-                                    badge_json = extract_json_from_response(raw_response)
-                                
+                                # Route through the robust extractor (handles Unicode quotes,
+                                # markdown fences, language-specific preamble, etc.)
+                                badge_json = extract_json_from_response(raw_response)
                                 raw_model_output_str = raw_response
                             except json.JSONDecodeError as e:
                                 logger.error(f"Failed to parse JSON from accumulated text: {e}")
@@ -726,6 +735,8 @@ Parameters:
                                 yield format_streaming_response(error_chunk)
                                 return
 
+                            logger.info(f"Streaming badge metadata generated: '{validated.badge_name}' | language={_stream_lang_code} ({_stream_lang_name})")
+
                             # ============================================================================
                             # SECTION 2: Image Generation (Conditional - Calls External Service)
                             # ============================================================================
@@ -755,19 +766,25 @@ Parameters:
                                 # Generate image based on type
                                 if image_type == "text_overlay":
                                     # Use SLM to optimize text for image overlay
-                                    optimized_text = await optimize_badge_text({
-                                        "badge_name": validated.badge_name,
-                                        "badge_description": validated.badge_description,
-                                        "institution": request.badge_configuration.institution or ""
-                                    })
-                                    
+                                    _lang_name = settings.SUPPORTED_LANGUAGES.get(
+                                        (request.badge_configuration.language or "en").lower(), "English"
+                                    )
+                                    optimized_text = await optimize_badge_text(
+                                        {
+                                            "badge_name": validated.badge_name,
+                                            "badge_description": validated.badge_description,
+                                            "institution": request.badge_configuration.institution or ""
+                                        },
+                                        language=_lang_name,
+                                    )
+
                                     # Call external service with optimized text
                                     image_base64, image_config = await call_badge_image_service(
                                         image_type="text_overlay",
                                         badge_name=validated.badge_name,
                                         badge_description=validated.badge_description,
                                         short_title=optimized_text.get("short_title", validated.badge_name),
-                                        achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
+                                        achievement_phrase=optimized_text.get("achievement_phrase", validated.badge_name),
                                         institution=request.badge_configuration.institution,
                                         institute_url=request.badge_configuration.institute_url,
                                         image_configuration=img_config
@@ -909,6 +926,8 @@ Parameters:
                                 "user_badge_tone": request.badge_configuration.badge_tone,
                                 "user_criterion_style": request.badge_configuration.criterion_style,
                                 "user_badge_level": request.badge_configuration.badge_level,
+                                "language": _stream_lang_code,
+                                "language_name": _stream_lang_name,
                                 "custom_instructions": request.badge_configuration.custom_instructions,
                                 "institution": request.badge_configuration.institution,
                                 "selected_image_type": image_type,
@@ -941,7 +960,8 @@ Parameters:
                                     "metrics": token_usage_data or {}
                                 }
                                 yield format_streaming_response(final_chunk)
-                                
+                                logger.info(f"Streamed badge ID {badge_id}: '{validated.badge_name}' | language={_stream_lang_code} ({_stream_lang_name}) | time={time.time() - start_time:.2f}s")
+
                             except Exception as dict_error:
                                 logger.error(f"Error converting result to dict: {dict_error}")
                                 # Fallback: create a simple response

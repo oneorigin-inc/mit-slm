@@ -35,6 +35,10 @@ class ContentConfig(BaseModel):
         default=None,
         description="Custom instructions for badge generation"
     )
+    language: str = Field(
+        default="en",
+        description="BCP-47 language code for badge output (e.g. 'en', 'es', 'fr', 'de'). Defaults to English."
+    )
 
 
 class IssuerConfig(BaseModel):
@@ -171,6 +175,7 @@ class BadgeConfiguration(BaseModel):
     institution: str = Field(default="", description="Issuing institution name")
     institute_url: str = Field(default="", description="URL of the issuing institution")
     custom_instructions: str = Field(default="", description="Additional custom requirements")
+    language: str = Field(default="en", description="BCP-47 language code for badge output (e.g. 'en', 'es', 'fr', 'de'). Defaults to English.")
 
 class ImageConfiguration(BaseModel):
     image_type: str = Field(default="", description="Force image type: 'text_overlay' or 'icon_based'. If empty, randomly selected")
