@@ -27,7 +27,7 @@ services:
       - ./assets:/app/assets
       - ./logs:/app/logs
     environment:
-      - OLLAMA_API_URL=${OLLAMA_API_URL:-http://ollama:11434/api/generate}
+      - OLLAMA_API_URL=http://ollama:11434/api/generate
       - BADGE_IMAGE_SERVICE_URL=http://host.docker.internal:3001  # For external image service on host
       - PYTHONUNBUFFERED=1
     depends_on:
