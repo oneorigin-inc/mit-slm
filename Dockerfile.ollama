@@ -15,15 +15,12 @@ RUN ollama serve & \
     kill $OLLAMA_PID && \
     wait $OLLAMA_PID || true
 
-#Only copy the created model (removes source GGUF duplication)
+# Copy baked model storage + keep source files for fallback creation if needed
 FROM alpine/ollama:latest
 
-# Copy only Ollama's model storage from builder stage (NOT the source GGUF file)
 COPY --from=builder /root/.ollama /root/.ollama
+# COPY models/ /models/
 
-# Expose Ollama port
 EXPOSE 11434
-
-# Start Ollama server
 CMD ["serve"]
 
