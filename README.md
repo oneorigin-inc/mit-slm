@@ -49,7 +49,7 @@ A robust API system for generating Open Badge v3 compliant metadata using local 
 │   │   ├── text_processor.py   # Text preprocessing utilities
 │   │   ├── badge_image_client.py # Badge image service client
 │   │   ├── ollama_client.py    # Ollama LLM client
-│   │   └── skill_extractor.py  # LAiSER skill extraction service
+│   │   └── skill_extractor.py  # (disabled) legacy LAiSER stub
 │   ├── routers/
 │   │   ├── badges.py           # Badge generation endpoints
 │   │   └── health.py           # Health check endpoints
@@ -65,7 +65,7 @@ A robust API system for generating Open Badge v3 compliant metadata using local 
 ├── logs/                       # Application logs directory
 ├── .github/
 │   └── workflows/              # GitHub Actions CI/CD
-├── requirements.txt            # Python dependencies (includes LAiSER)
+├── requirements.txt            # Python dependencies
 ├── .env.example                # Environment variables template
 ├── .gitignore
 └── README.md
@@ -131,7 +131,7 @@ curl http://localhost:8000/health
 
 ***
 
-## API Overview
+## API Reference
 
 ### Base URL
 
@@ -139,24 +139,81 @@ curl http://localhost:8000/health
 http://localhost:8000
 ```
 
-### Endpoints
+Interactive OpenAPI docs: `GET /docs`  
+OpenAPI JSON: `GET /openapi.json`
 
-| Endpoint                                    | Method      | Description                          |
-|---------------------------------------------|-------------|--------------------------------------|
-| `/health`                                   | GET         | Service health check                 |
-| `/docs`                                     | GET         | Interactive API documentation        |
-| `/api/v1/generate-badge-suggestions`        | POST        | Generate badge metadata              |
-| `/api/v1/generate-badge-suggestions/stream` | POST        | Streaming badge metadata             |
-| `/api/v1/regenerate-field`                  | POST        | Regenerate a specific badge field    |
-| `/api/v1/badge_history`                     | GET/DELETE  | Badge history management             |
+### CORS
 
-***
+All routes allow cross-origin requests (`Access-Control-Allow-Origin: *`).
 
-### Sample Request
+### Error responses
+
+Non-2xx responses use FastAPI’s standard shape:
 
 ```json
 {
-  "course_input": "Course content description here...",
+  "detail": "Human-readable error message"
+}
+```
+
+Validation errors (`422`) return a `detail` array of field errors.
+
+---
+
+### Endpoints summary
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Service health check |
+| `POST` | `/api/v1/generate-badge-suggestions` | Generate badge metadata (sync) |
+| `POST` | `/api/v1/generate-badge-suggestions/stream` | Generate badge metadata (SSE stream) |
+| `POST` | `/api/v1/regenerate-field` | Regenerate one badge field |
+| `POST` | `/api/v1/edit-badge-metadata` | Append data to a badge in history |
+| `POST` | `/api/v1/optimize_badge_text` | Optimize title/phrase for image overlay |
+| `GET` | `/api/v1/badge_history` | List in-memory badge history |
+| `DELETE` | `/api/v1/badge_history` | Clear in-memory badge history |
+| `GET` | `/api/v1/styles` | List style/tone/level options |
+| `POST` | `/api/v1/extract-skills/{badge_id}` | **Disabled** — skills handled by frontend |
+| `GET` | `/api/v1/ollama-status` | Ollama model runtime status |
+| `POST` | `/api/v1/badge/generate` | Proxy to badge image service |
+| `POST` | `/api/v1/badge/generate-with-logo` | Proxy to badge image service (multipart) |
+
+> **Skill extraction:** ESCO/OSN alignment is performed by the **frontend** via an external LAiSER API. This backend does not return `skills` on badge responses. The `enable_skill_extraction` request field is accepted for compatibility but ignored.
+
+---
+
+### `GET /health`
+
+**Description:** Liveness check for load balancers and monitoring.
+
+**Request:** No body.
+
+**Response `200`:**
+
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-05-26T12:00:00.000000"
+}
+```
+
+---
+
+### `POST /api/v1/generate-badge-suggestions`
+
+**Description:** Generates Open Badge v3–style metadata from course input using the local Ollama SLM. Optionally calls the external badge image service when image generation is enabled.
+
+**Request headers:**
+
+| Header | Value |
+|--------|--------|
+| `Content-Type` | `application/json` |
+
+**Request body (`GenerateBadgeRequest`):**
+
+```json
+{
+  "course_input": "Course content or learning outcomes...",
   "badge_configuration": {
     "badge_style": "Academic",
     "badge_tone": "Authoritative",
@@ -164,10 +221,11 @@ http://localhost:8000
     "badge_level": "Beginner",
     "institution": "MIT",
     "institute_url": "https://www.mit.edu",
-    "custom_instructions": "Add institute name to badge name and description.",
+    "custom_instructions": "Add institute name to badge title and description.",
     "language": "en"
   },
-  "enable_skill_extraction": true,
+  "enable_skill_extraction": false,
+  "context_length": null,
   "image_generation": {
     "enable_image_generation": true,
     "image_configuration": {
@@ -177,15 +235,380 @@ http://localhost:8000
       "secondary_color": "#8A8B8C",
       "border_color": "#000000",
       "border_width": 4,
+      "logo": "",
       "ribbon_type": "ribbon"
     }
   }
 }
 ```
 
-You can use this request with either the synchronous or streaming endpoint.
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `course_input` | string | Yes | Source text for badge generation |
+| `badge_configuration` | object | Yes | Style, tone, level, institution, language, etc. |
+| `badge_configuration.language` | string | No | BCP-47 code (default `en`). See [Multi-Lingual](#multi-lingual-badge-generation) |
+| `enable_skill_extraction` | boolean | No | Ignored (frontend handles skills). Default `false` |
+| `context_length` | integer | No | Ollama context override (`num_ctx`) |
+| `image_generation.enable_image_generation` | boolean | No | Default `false` |
+| `image_generation.image_configuration` | object | No | Required when image generation is enabled |
+| `image_configuration.image_type` | string | No | `text_overlay` (default) or `icon_based` |
 
-***
+**Response `200` (`BadgeResponse`):**
+
+```json
+{
+  "credentialSubject": {
+    "achievement": {
+      "name": "MIT Introduction to Machine Learning",
+      "description": "Demonstrates foundational ML competency...",
+      "criteria": {
+        "narrative": "The learner explains, determines, and applies..."
+      },
+      "image": {
+        "id": "https://example.com/achievements/badge_<uuid>/image",
+        "image_base64": "<base64-string-or-omitted-if-no-image>"
+      }
+    }
+  },
+  "imageConfig": {},
+  "badge_id": "550e8400-e29b-41d4-a716-446655440000",
+  "metrics": {
+    "prompt_eval_count": 1200,
+    "eval_count": 350,
+    "prompt_eval_duration": 123456789,
+    "eval_duration": 987654321,
+    "total_duration": 1111111111
+  },
+  "badge_configuration": { },
+  "enable_image_generation": true
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `credentialSubject.achievement` | object | OBv3 achievement payload |
+| `imageConfig` | object \| null | Image service config metadata |
+| `badge_id` | string | UUID for this generation |
+| `metrics` | object \| null | Ollama token/timing metrics |
+| `badge_configuration` | object | Echo of request configuration |
+| `enable_image_generation` | boolean | Echo of request flag |
+
+**Common errors:** `422` validation, `502` invalid model JSON, `503` Ollama or image service unavailable, `500` internal error.
+
+---
+
+### `POST /api/v1/generate-badge-suggestions/stream`
+
+**Description:** Same input as the sync endpoint. Streams Server-Sent Events (SSE) while the model generates, then emits a final badge payload (and optionally generates an image).
+
+**Request:** Same body as `POST /api/v1/generate-badge-suggestions`.
+
+**Request headers:**
+
+| Header | Value |
+|--------|--------|
+| `Content-Type` | `application/json` |
+| `Accept` | `text/event-stream` (recommended) |
+
+**Response `200`:** `Content-Type: text/plain; charset=utf-8`  
+Each event is one line: `data: <json>\n\n`
+
+**Event types:**
+
+| `type` | Description |
+|--------|-------------|
+| `token` | Partial model output |
+| `final` | Complete `BadgeResponse` in `content` |
+| `error` | Failure; stream may end |
+
+**`token` event:**
+
+```json
+{
+  "type": "token",
+  "content": "{\"badge_name\":",
+  "accumulated": "{\"badge_name\":",
+  "badge_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**`final` event:**
+
+```json
+{
+  "type": "final",
+  "content": { },
+  "badge_id": "550e8400-e29b-41d4-a716-446655440000",
+  "generation_time": 45.2,
+  "metrics": {
+    "prompt_eval_count": 1261,
+    "eval_count": 313
+  }
+}
+```
+
+`content` matches the sync `BadgeResponse` object.
+
+**`error` event:**
+
+```json
+{
+  "type": "error",
+  "content": "Failed to parse JSON from response: ...",
+  "badge_id": "550e8400-e29b-41d4-a716-446655440000",
+  "error_code": "skill_extraction_not_ready",
+  "solution": "Optional hint for clients"
+}
+```
+
+---
+
+### `POST /api/v1/regenerate-field`
+
+**Description:** Regenerates a single field (`title`, `description`, or `criteria`) for a badge previously stored in server history.
+
+**Request body:**
+
+```json
+{
+  "badge_id": "550e8400-e29b-41d4-a716-446655440000",
+  "field_to_change": "title",
+  "badge_style": "Academic",
+  "badge_tone": null,
+  "criterion_style": null,
+  "badge_level": null,
+  "institution": "MIT",
+  "custom_instructions": "Make the title more concise."
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `badge_id` | string | Yes | UUID from a prior generate response |
+| `field_to_change` | string | Yes | `title`, `description`, or `criteria` |
+| `custom_instructions` | string | No | Extra guidance for the model |
+| `institution` | string | No | Institution context |
+| `badge_style`, `badge_tone`, `criterion_style`, `badge_level` | string | No | Optional overrides |
+
+**Response `200`:** Same shape as `BadgeResponse` (updated badge).
+
+**Common errors:** `404` badge not in history, `500` model or merge failure.
+
+---
+
+### `POST /api/v1/edit-badge-metadata`
+
+**Description:** Merges arbitrary key/value data into a badge entry stored in in-memory history (used for client-side patches).
+
+**Request body:**
+
+```json
+{
+  "badge_id": 1,
+  "append_data": {
+    "custom_field": "value",
+    "notes": "Reviewer approved"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `badge_id` | integer | Yes | **History entry `id`**, not the UUID `badge_id` |
+| `append_data` | object | Yes | Fields to merge into stored result |
+
+**Response `200`:**
+
+```json
+{
+  "message": "Data successfully appended to badge 1",
+  "badge_id": 1,
+  "updated_result": { }
+}
+```
+
+**Common errors:** `404` history entry not found, `400` entry has no result data.
+
+---
+
+### `POST /api/v1/optimize_badge_text`
+
+**Description:** Uses the SLM to produce short overlay strings for badge images (max 2-word title, 3-word phrase).
+
+**Request body:**
+
+```json
+{
+  "badge_name": "Machine Learning Foundations",
+  "badge_description": "Covers supervised learning, evaluation, and deployment basics.",
+  "institution": "MIT"
+}
+```
+
+**Response `200`:**
+
+```json
+{
+  "short_title": "ML Foundations",
+  "achievement_phrase": "Models Mastered",
+  "metrics": {
+    "prompt_eval_count": 200,
+    "eval_count": 50
+  }
+}
+```
+
+---
+
+### `GET /api/v1/badge_history`
+
+**Description:** Returns up to 50 recent generations held in process memory (cleared on restart).
+
+**Request:** No body.
+
+**Response `200`:**
+
+```json
+{
+  "history": [
+    {
+      "id": 1,
+      "timestamp": "2026-05-26T12:00:00",
+      "badge_id": "550e8400-e29b-41d4-a716-446655440000",
+      "course_input": "Introduction to...",
+      "result": { },
+      "generation_time": 42.5,
+      "metrics": { }
+    }
+  ],
+  "total_count": 1
+}
+```
+
+---
+
+### `DELETE /api/v1/badge_history`
+
+**Description:** Clears all in-memory history.
+
+**Request:** No body.
+
+**Response `200`:**
+
+```json
+{
+  "message": "Badge history cleared successfully"
+}
+```
+
+---
+
+### `GET /api/v1/styles`
+
+**Description:** Returns configurable style, tone, criterion, and level labels with prompt descriptions.
+
+**Request:** No body.
+
+**Response `200`:**
+
+```json
+{
+  "badge_styles": {
+    "Professional": "Style Instructions: ...",
+    "Academic": "Style Instructions: ..."
+  },
+  "badge_tones": {
+    "Authoritative": "Confident, definitive tone...",
+    "Encouraging": "Motivating, supportive tone..."
+  },
+  "criterion_styles": {
+    "Task-Oriented": "The learner explains, determines..."
+  },
+  "badge_levels": {
+    "Beginner": "Target learners with minimal prior knowledge...",
+    "Intermediate": "...",
+    "Advanced": "..."
+  }
+}
+```
+
+---
+
+### `POST /api/v1/extract-skills/{badge_id}`
+
+**Description:** **Disabled.** Skill extraction is handled by the frontend LAiSER API.
+
+**Path parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `badge_id` | string | Badge UUID |
+
+**Query parameters:**
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `top_k` | integer | `10` | Ignored while disabled |
+
+**Response `503`:**
+
+```json
+{
+  "detail": "Backend LAiSER skill extraction is disabled. Skill extraction is handled by the frontend."
+}
+```
+
+---
+
+### `GET /api/v1/ollama-status`
+
+**Description:** Proxies Ollama’s `/api/ps` and `/api/tags` for debugging model load state.
+
+**Request:** No body.
+
+**Response `200`:**
+
+```json
+{
+  "status": "success",
+  "ollama_url": "http://ollama:11434",
+  "running_models": { "models": [] },
+  "available_models": { "models": [] }
+}
+```
+
+**Common errors:** `503` cannot connect to Ollama, `500` other failures.
+
+---
+
+### `POST /api/v1/badge/generate`
+
+**Description:** Forwards the JSON body to the external badge image service (`BADGE_IMAGE_SERVICE_URL`).
+
+**Request:** JSON body — schema defined by the image service (passed through unchanged).
+
+**Response `200`:** JSON from the image service.
+
+**Common errors:** `503` image service unreachable; `4xx`/`5xx` forwarded from image service.
+
+---
+
+### `POST /api/v1/badge/generate-with-logo`
+
+**Description:** Forwards multipart form data to the image service logo endpoint.
+
+**Request:** `multipart/form-data`
+
+| Part | Type | Required | Description |
+|------|------|----------|-------------|
+| `logo` | file | Yes | PNG or SVG |
+| `config` | string (JSON) | Yes | Badge image configuration |
+
+**Response `200`:** JSON from the image service.
+
+**Common errors:** `400` missing `logo` or `config`; `503` service unreachable.
+
+---
 
 ## Multi-Lingual Badge Generation
 
@@ -261,47 +684,7 @@ By embedding such instructions during generation, the resulting credentials feel
 
 **Example: Add Institute Name to Badge Title and Description**
 
-**Sample request:**
-
-```json
-{
-  "course_input": "WGU's values-focused leadership program curriculum...",
-  "badge_configuration": {
-    "badge_style": "Academic",
-    "badge_tone": "Professional",
-    "criterion_style": "Task-Oriented",
-    "badge_level": "Intermediate",
-    "institution": "WGU",
-    "custom_instructions": "Add institute name (WGU) to badge title and description."
-  },
-  "enable_skill_extraction": false,
-  "image_generation": {
-    "enable_image_generation": false
-  }
-}
-```
-
-**Sample response:**
-
-```json
-{
-  "credentialSubject": {
-    "achievement": {
-      "name": "WGU Values-Based Leadership Certificate",
-      "description": "Earned through WGU's comprehensive course, this certificate equips....",
-      "criteria": {
-        "narrative": "Begin by creating a personalized course plan in collaboration..........."
-      },
-      "image": {
-        "id": "",
-        "image_base64": ""
-      }
-    }
-  },
-  "imageConfig": {},
-  "badge_id": ""
-}
-```
+Use `badge_configuration.custom_instructions` in the [generate badge request](#post-apiv1generate-badge-suggestions). Example: `"Add institute name (WGU) to badge title and description."`
 
 ***
 
@@ -509,7 +892,6 @@ PARAMETER stop "}\n\n"
 # Recreate the model with updated Modelfile
 ollama create phi3-mini:latest -f models/Modelfile
 
-```bash
 docker compose down
 docker compose build
 docker compose up -d
@@ -517,15 +899,13 @@ docker compose up -d
 
 ***
 
-## LAiSER Integration
+## Skill extraction (frontend LAiSER API)
 
-Skills are extracted by calling an external **LAiSER API** (Leveraging AI for Skills Extraction & Research). The `skill_extractor.py` service sends badge content to the API and receives ESCO-aligned skill data — no local model download or GPU required.
+This backend **does not** run LAiSER locally. The frontend calls an external **LAiSER API** for ESCO/OSN skill alignment and attaches results to the badge in the client.
 
-- **Dual Taxonomy Alignment**: The API maps badge content to two skill frameworks:
-  - **ESCO** (European Skills, Competences, Qualifications and Occupations) — 10,000+ skills
-  - **OSN** (Open Skills Network) — Rich Skills Descriptors (RSDs)
-- **Open Badge v3 Alignment**: Skills are returned in OBv3 `Alignment` format with `targetName`, `targetDescription`, `targetUrl`, and `targetType`
-
+- Backend endpoint `POST /api/v1/extract-skills/{badge_id}` returns **503** (disabled).
+- Request field `enable_skill_extraction` is accepted but **ignored**.
+- Badge responses do not include a `skills` array from this service.
 
 ***
 
