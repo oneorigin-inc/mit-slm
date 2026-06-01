@@ -13,7 +13,8 @@ A robust API system for generating Open Badge v3 compliant metadata using local 
 - **Automated Badge Generation:** Transforms course inputs into fully structured badge metadata.  
 - **Docker Containerized:** Full Docker Compose setup for end-to-end container orchestration.  
 - **Health Monitoring:** Service health endpoints for production resilience.  
-- **Intelligent Icon Matching:** Uses ML algorithms to suggest icons from a curated library.  
+- **Intelligent Icon Matching:** Uses ML algorithms to suggest icons from a curated library.
+- **LAiSER API Skill Extraction:** Calls an external LAiSER API to extract ESCO- and OSN-aligned skills — no local model or GPU required.  
 - **Custom Instructions:** Easily tailor output format/narrative with request-time custom instructions.  
 
 ***
@@ -156,16 +157,88 @@ http://localhost:8000
 ```json
 {
   "course_input": "Course content description here...",
-  "badge_style": "Academic",
-  "badge_tone": "Authoritative",
-  "criterion_style": "Task-Oriented",
-  "badge_level": "Beginner",
-  "institution": "MIT",
-  "custom_instructions": "Add institute name to badge name and description."
+  "badge_configuration": {
+    "badge_style": "Academic",
+    "badge_tone": "Authoritative",
+    "criterion_style": "Task-Oriented",
+    "badge_level": "Beginner",
+    "institution": "MIT",
+    "institute_url": "https://www.mit.edu",
+    "custom_instructions": "Add institute name to badge name and description.",
+    "language": "en"
+  },
+  "enable_skill_extraction": true,
+  "image_generation": {
+    "enable_image_generation": true,
+    "image_configuration": {
+      "image_type": "text_overlay",
+      "shape": "hexagon",
+      "primary_color": "#A31F34",
+      "secondary_color": "#8A8B8C",
+      "border_color": "#000000",
+      "border_width": 4,
+      "ribbon_type": "ribbon"
+    }
+  }
 }
 ```
 
 You can use this request with either the synchronous or streaming endpoint.
+
+***
+
+## Multi-Lingual Badge Generation
+
+The API supports generating badge metadata in 23 languages. All badge text fields (name, description, criteria narrative, etc.) are output in the requested language regardless of the language of the input course content.
+
+### Specifying a Language
+
+Set the `language` field to a BCP-47 language code in your request:
+
+- **New request format** (`GenerateBadgeRequest`): inside `badge_configuration`
+- **Legacy flat format** (`BadgeRequest`): top-level `language` field
+
+**Example (new format):**
+
+```json
+{
+  "course_input": "Course content description here...",
+  "badge_configuration": {
+    "badge_style": "Academic",
+    "badge_tone": "Authoritative",
+    "language": "fr"
+  }
+}
+```
+
+**Example (legacy flat format):**
+
+```json
+{
+  "course_input": "Course content description here...",
+  "badge_style": "Academic",
+  "badge_tone": "Authoritative",
+  "language": "es"
+}
+```
+
+If `language` is omitted or set to `"en"`, English is used by default.
+
+### Supported Languages
+
+| Code | Language   | Code | Language   | Code | Language   |
+|------|------------|------|------------|------|------------|
+| `ar` | Arabic     | `it` | Italian    | `ru` | Russian    |
+| `zh` | Chinese    | `ja` | Japanese   | `es` | Spanish    |
+| `cs` | Czech      | `ko` | Korean     | `sv` | Swedish    |
+| `da` | Danish     | `no` | Norwegian  | `th` | Thai       |
+| `nl` | Dutch      | `pl` | Polish     | `tr` | Turkish    |
+| `en` | English    | `pt` | Portuguese | `uk` | Ukrainian  |
+| `fi` | Finnish    | `he` | Hebrew     |      |            |
+| `fr` | French     | `hu` | Hungarian  |      |            |
+| `de` | German     |      |            |      |            |
+
+Unsupported codes fall back to English.
 
 ***
 
@@ -193,12 +266,18 @@ By embedding such instructions during generation, the resulting credentials feel
 ```json
 {
   "course_input": "WGU's values-focused leadership program curriculum...",
-  "badge_style": "Academic",
-  "badge_tone": "Professional",
-  "criterion_style": "Task-Oriented",
-  "badge_level": "Intermediate",
-  "institution": "WGU",
-  "custom_instructions": "Add institute name (WGU) to badge title and description."
+  "badge_configuration": {
+    "badge_style": "Academic",
+    "badge_tone": "Professional",
+    "criterion_style": "Task-Oriented",
+    "badge_level": "Intermediate",
+    "institution": "WGU",
+    "custom_instructions": "Add institute name (WGU) to badge title and description."
+  },
+  "enable_skill_extraction": false,
+  "image_generation": {
+    "enable_image_generation": false
+  }
 }
 ```
 
@@ -440,19 +519,13 @@ docker compose up -d
 
 ## LAiSER Integration
 
-The system integrates [LAiSER](https://github.com/your-org/laiser) (Leveraging AI for Skills Extraction & Research) for skill extraction:
+Skills are extracted by calling an external **LAiSER API** (Leveraging AI for Skills Extraction & Research). The `skill_extractor.py` service sends badge content to the API and receives ESCO-aligned skill data — no local model download or GPU required.
 
-- **skill_extractor.py**: Service wrapper for LAiSER's `Skill_Extractor` class
-- **ESCO Taxonomy**: Maps extracted skills to European Skills, Competences, Qualifications and Occupations framework
-- **Open Badge v3 Alignment**: Outputs skills in OBv3 `Alignment` format with `targetName`, `targetDescription`, `targetUrl`, and `targetType`
+- **Dual Taxonomy Alignment**: The API maps badge content to two skill frameworks:
+  - **ESCO** (European Skills, Competences, Qualifications and Occupations) — 10,000+ skills
+  - **OSN** (Open Skills Network) — Rich Skills Descriptors (RSDs)
+- **Open Badge v3 Alignment**: Skills are returned in OBv3 `Alignment` format with `targetName`, `targetDescription`, `targetUrl`, and `targetType`
 
-**Configuration** (via environment variables or `.env`):
-```
-LAISER_MODEL_ID=bert-base-uncased    # HuggingFace model for embeddings
-LAISER_HF_TOKEN=                      # HuggingFace token (optional for public models)
-LAISER_USE_GPU=false                  # CPU mode by default
-LAISER_TOP_K=10                       # Number of skills to extract
-```
 
 ***
 
@@ -481,3 +554,29 @@ ollama pull <model-name>        # Pull model from registry
 
 ***
 
+## Authors
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/prashantj-22">
+        <img src="https://github.com/prashantj-22.png" width="50" height="50" style="border-radius:50%" alt="Prashant Jadhao"/><br/>
+        <sub><b>Prashant Jadhao</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/dhruvsuthar1107">
+        <img src="https://github.com/dhruvsuthar1107.png" width="50" height="50" style="border-radius:50%" alt="Dhruv Suthar"/><br/>
+        <sub><b>Dhruv Suthar</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/piyushrewatkar7">
+        <img src="https://github.com/piyushrewatkar7.png" width="50" height="50" style="border-radius:50%" alt="Piyush Jayawant Rewatkar"/><br/>
+        <sub><b>Piyush Jayawant Rewatkar</b></sub>
+      </a>
+    </td>
+  </tr>
+</table>
+
+***
