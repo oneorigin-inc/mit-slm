@@ -79,39 +79,79 @@ def apply_regeneration_overrides(current_params: Dict[str, str], regeneration_re
     
     return updated_params
 
+def _normalize_json_text(text: str) -> str:
+    """Normalize Unicode punctuation that models sometimes emit instead of ASCII."""
+    # Unicode curly/smart quotes → ASCII double quotes
+    text = text.replace('“', '"').replace('”', '"')
+    # Single curly quotes → ASCII single quotes (inside strings)
+    text = text.replace('‘', "'").replace('’', "'")
+    # Fullwidth brackets (CJK)
+    text = text.replace('｛', '{').replace('｝', '}')
+    text = text.replace('［', '[').replace('］', ']')
+    # Fullwidth colon / comma
+    text = text.replace('：', ':').replace('，', ',')
+    return text
+
+
 def extract_json_from_response(response_text: str) -> dict:
-    """Extract JSON from model response, handling various formats."""
+    """Extract JSON from model response, handling various formats and languages."""
     if not response_text or not response_text.strip():
         return {}
-    
+
+    # Normalize Unicode punctuation emitted by multilingual models
+    text = _normalize_json_text(response_text)
+
+    # 1. Strip markdown code fences (```json ... ``` or ``` ... ```)
+    fence_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+    if fence_match:
+        try:
+            return json.loads(fence_match.group(1).strip())
+        except json.JSONDecodeError:
+            pass
+
+    # 2. Try the whole response as-is (model output exactly right)
     try:
-        return json.loads(response_text.strip())
+        return json.loads(text.strip())
     except json.JSONDecodeError:
         pass
-    
-    # Try to find JSON-like content
-    json_patterns = [
-        r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}',
-        r'\{.*\}',
-    ]
-    
-    for pattern in json_patterns:
-        matches = re.findall(pattern, response_text, re.DOTALL)
-        for match in matches:
-            try:
-                return json.loads(match.strip())
-            except json.JSONDecodeError:
-                continue
-    
-    logger.warning("Could not extract valid JSON from response: %s", response_text[:200])
+
+    # 3. Find the JSON object that starts with our known key
+    anchor_match = re.search(r'\{[^{}]*"badge_name".*\}', text, re.DOTALL)
+    if anchor_match:
+        try:
+            return json.loads(anchor_match.group(0).strip())
+        except json.JSONDecodeError:
+            pass
+
+    # 4. Generic: find any outermost {...} block
+    brace_match = re.search(r'\{.*\}', text, re.DOTALL)
+    if brace_match:
+        try:
+            return json.loads(brace_match.group(0).strip())
+        except json.JSONDecodeError:
+            pass
+
+    logger.warning("Could not extract valid JSON from response: %s", response_text[:300])
     return {"error": "json_extraction_failed", "raw_response": response_text}
+
+def _resolve_language(request) -> str:
+    """Return the full language name for the request, defaulting to English."""
+    if hasattr(request, 'badge_configuration'):
+        lang_code = request.badge_configuration.language or "en"
+    elif hasattr(request, 'content'):
+        lang_code = request.content.language or "en"
+    else:
+        lang_code = "en"
+    return settings.SUPPORTED_LANGUAGES.get(lang_code.lower(), "English")
+
 
 async def generate_badge_metadata_async(request) -> dict:
     """Generate badge metadata using enhanced Modelfile system context"""
-    
+
     badge_params = get_badge_configuration(request)
     processed_course_input = process_course_input(request.course_input)
-    
+    language = _resolve_language(request)
+
     # Handle both old and new request formats
     if hasattr(request, 'badge_configuration'):
         # New format: GenerateBadgeRequest
@@ -124,9 +164,11 @@ async def generate_badge_metadata_async(request) -> dict:
         badge_style = request.badge_style
         institution = request.institution
         custom_instructions = request.custom_instructions
-    
+
     # Build context-rich user message
-    user_content = f"""Course Content: {processed_course_input}
+    user_content = f"""[LANGUAGE: {language}]
+
+Course Content: {processed_course_input}
 
 Parameters:
 - Style: {settings.STYLE_DESCRIPTIONS.get(badge_params['badge_style'])}
@@ -143,7 +185,9 @@ Parameters:
     if custom_instructions:
         user_content += f"\n- Special Instructions: {custom_instructions}"
 
-    user_content += "\n\nGenerate badge JSON with exact schema {\"badge_name\": \"string\", \"badge_description\": \"string\", \"criteria\": {\"narrative\": \"string\"}}:"
+    user_content += f"\n\nCRITICAL: ALL badge text values MUST be written in {language}, even if the course content above is in a different language."
+    user_content += "\n\nRespond with ONLY a JSON object. Start your response with `{` — no intro text, no explanation, no markdown fences."
+    user_content += "\nSchema: {\"badge_name\": \"...\", \"badge_description\": \"...\", \"criteria\": {\"narrative\": \"...\"}}"
 
     # Minimal prompt - Modelfile handles all the complex instructions
     prompt = user_content
@@ -160,31 +204,25 @@ Parameters:
     return result
 
 
-async def optimize_badge_text(badge_data: dict):
+async def optimize_badge_text(badge_data: dict, language: str = "English"):
     """Optimize badge text for image overlay with strict word limits"""
-    prompt = f"""Badge: "{badge_data['badge_name']}"
+    prompt = f"""[LANGUAGE: {language}]
+
+Badge: "{badge_data['badge_name']}"
 Description: "{badge_data['badge_description']}"
 
-Generate optimized overlay text with STRICT WORD LIMITS:
+Generate optimized overlay text WITH STRICT WORD LIMITS in {language}:
 
 CRITICAL REQUIREMENTS:
-- short_title: MAXIMUM 2 WORDS (e.g., "Python Expert", "Data Analyst", "Cloud Architect")
-- achievement_phrase: MAXIMUM 3 WORDS (e.g., "Master of Code", "Innovation Leader", "Problem Solver")
+- short_title: MAXIMUM 2 WORDS in {language}
+- achievement_phrase: MAXIMUM 3 WORDS in {language}
 
 Guidelines:
 - Use concise, impactful phrases
-- Avoid articles (the, a, an) to save words
+- Avoid articles (the, a, an, and equivalents in {language}) to save words
 - Use powerful action words
 - Make every word count
-
-Examples:
-GOOD:
-  - short_title: "Python Expert" (2 words)
-  - achievement_phrase: "Code with Confidence" (3 words)
-
-BAD:
-  - short_title: "Python Programming Specialist" (3 words - TOO LONG)
-  - achievement_phrase: "Expert in Data Analysis" (4 words - TOO LONG)
+- Output MUST be in {language}
 
 Return JSON:
 {{
@@ -199,13 +237,14 @@ Return JSON:
 
 async def generate_badge_metadata_stream_async(request) -> AsyncGenerator[Dict[str, Any], None]:
     """Generate badge metadata with streaming response using new format"""
-    
+
     # Process course input
     processed_input = process_course_input(request.course_input)
-    
+
     # Get badge configuration parameters
     badge_params = get_badge_configuration(request)
-    
+    language = _resolve_language(request)
+
     # Handle both old and new request formats
     if hasattr(request, 'badge_configuration'):
         # New format: GenerateBadgeRequest
@@ -216,9 +255,11 @@ async def generate_badge_metadata_stream_async(request) -> AsyncGenerator[Dict[s
         # Old format: BadgeRequest (legacy)
         institution = request.institution
         custom_instructions = request.custom_instructions
-    
+
     # Build the prompt
-    prompt = f"""Generate Open Badges 3.0 compliant metadata from course content.
+    prompt = f"""[LANGUAGE: {language}]
+
+Generate Open Badges 3.0 compliant metadata from course content.
 
 COURSE CONTENT:
 {processed_input}
@@ -230,6 +271,8 @@ CRITERION STYLE: {badge_params['criterion_style']} - {settings.CRITERION_TEMPLAT
 
 INSTITUTION: {institution or "Not specified"}
 CUSTOM INSTRUCTIONS: {custom_instructions or "None"}
+
+CRITICAL: ALL badge text fields MUST be written in {language} — this overrides the language of the course content above.
 
 OUTPUT FORMAT: Return ONLY valid JSON in this exact format:
 {{

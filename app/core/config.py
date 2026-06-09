@@ -74,6 +74,15 @@ class Settings(BaseSettings):
     
     }
 
+    SUPPORTED_LANGUAGES: Dict = {
+        "ar": "Arabic", "zh": "Chinese", "cs": "Czech", "da": "Danish",
+        "nl": "Dutch", "en": "English", "fi": "Finnish", "fr": "French",
+        "de": "German", "he": "Hebrew", "hu": "Hungarian", "it": "Italian",
+        "ja": "Japanese", "ko": "Korean", "no": "Norwegian", "pl": "Polish",
+        "pt": "Portuguese", "ru": "Russian", "es": "Spanish", "sv": "Swedish",
+        "th": "Thai", "tr": "Turkish", "uk": "Ukrainian"
+    }
+
     model_config = {"env_file": ".env"}  # Updated for Pydantic v2
 
 settings = Settings()
