@@ -278,12 +278,6 @@ class BadgeRequest(BaseModel):
 # Other Request Models (unchanged)
 # ============================================================================
 
-class RegenerationRequest(BaseModel):
-    course_input: str = Field(..., description="Original course content")
-    regenerate_parameters: List[str] = Field(..., description="List of parameters to regenerate: ['badge_style', 'badge_tone', 'criterion_style', 'badge_level']")
-    custom_instructions: Optional[str] = Field(default=None, description="Additional custom requirements")
-    institution: Optional[str] = Field(default=None, description="Issuing institution name")
-
 
 class AppendDataRequest(BaseModel):
     badge_id: str = Field(..., description="ID of the badge to edit")
