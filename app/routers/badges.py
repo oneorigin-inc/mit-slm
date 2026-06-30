@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import AsyncGenerator, List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 import uuid
 
 from app.models.requests import BadgeRequest, AppendDataRequest, FieldRegenerateRequest, GenerateBadgeRequest, ImageConfiguration
@@ -35,6 +35,14 @@ router = APIRouter()
 
 # In-memory history
 badge_history: List[Dict[str, Any]] = []
+
+# Allowed logo upload content types and size cap for the logo proxy endpoint.
+ALLOWED_LOGO_CONTENT_TYPES = frozenset({
+    "image/png",
+    "image/svg+xml",
+    "image/jpeg",
+})
+MAX_LOGO_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
 def log_response(operation: str, success: bool, request_id: Optional[str] = None):
@@ -107,6 +115,12 @@ def decode_logo_base64(logo_base64: Optional[str]) -> Optional[bytes]:
     except Exception as e:
         logger.warning(f"Failed to decode logo base64: {e}")
         return None
+
+
+def build_achievement_image_id(badge_id: str) -> str:
+    """Build the Open Badge v3 achievement image `id` (an IRI) from the configured issuer base URL."""
+    base = settings.BADGE_ISSUER_URL.rstrip("/")
+    return f"{base}/achievements/badge_{badge_id}/image"
 
 
 @router.post("/generate-badge-suggestions", response_model=BadgeResponse)
@@ -213,104 +227,13 @@ async def generate_badge(request: GenerateBadgeRequest):
             logger.info(f"Image generated successfully for badge {badge_id}")
         else:
             logger.info(f"Image generation disabled for badge {badge_id}")
-        
-        # ============================================================================
-        # OLD IMAGE GENERATION CODE (Commented out - now handled by external service)
-        # ============================================================================
-        # img_config = request.image_generation.image_configuration
-        # 
-        # # Build custom colors if provided
-        # custom_colors = None
-        # if img_config.primary_color or img_config.secondary_color:
-        #     custom_colors = {}
-        #     if img_config.primary_color:
-        #         custom_colors["primary"] = img_config.primary_color
-        #     if img_config.secondary_color:
-        #         custom_colors["secondary"] = img_config.secondary_color
-        #
-        # # Scrape institution colors if URL provided and no custom colors
-        # if not custom_colors and request.badge_configuration.institute_url:
-        #     try:
-        #         from app.services.web_color_scraper import scrape_institution_colors_async
-        #         institution_colors = await scrape_institution_colors_async(request.badge_configuration.institute_url)
-        #         custom_colors = institution_colors
-        #         logger.info(f"Scraped colors from {request.badge_configuration.institute_url}: {institution_colors}")
-        #     except Exception as color_error:
-        #         logger.warning(f"Failed to scrape colors from {request.badge_configuration.institute_url}: {color_error}")
-        #
-        # # Decode logo if provided
-        # logo_bytes = None
-        # if img_config.logo:
-        #     try:
-        #         import base64
-        #         logo_bytes = base64.b64decode(img_config.logo)
-        #     except Exception as e:
-        #         logger.warning(f"Failed to decode logo: {e}")
-        #
-        # # Generate image based on type
-        # if image_type_selected == "icon_based":
-        #     icon_suggestions = await get_icon_suggestions_for_badge(
-        #         badge_name=validated.badge_name,
-        #         badge_description=validated.badge_description,
-        #         custom_instructions=request.badge_configuration.custom_instructions or "",
-        #         top_k=3
-        #     )
-        #     icon_name = icon_suggestions.get('suggested_icon', {}).get('name', 'trophy.png')
-        #     image_base64, image_config = await generate_badge_with_icon(
-        #         icon_name=icon_name,
-        #         colors=custom_colors
-        #     )
-        # else:  # text_overlay
-        #     optimized_text = await optimize_badge_text({
-        #         "badge_name": validated.badge_name,
-        #         "badge_description": validated.badge_description,
-        #         "institution": request.badge_configuration.institution or ""
-        #     })
-        #     image_base64, image_config = await generate_badge_with_text(
-        #         short_title=optimized_text.get("short_title", validated.badge_name),
-        #         achievement_phrase=optimized_text.get("achievement_phrase", "Achievement Unlocked"),
-        #         logo_bytes=logo_bytes,
-        #         colors=custom_colors,
-        #         border_color=img_config.border_color if img_config.border_color else None,
-        #         border_width=img_config.border_width,
-        #         shape=img_config.shape if img_config.shape else None
-        #     )
 
         # ============================================================================
         # SECTION 3: Skill Extraction (Disabled - handled by frontend)
         # ============================================================================
+        # Backend LAiSER integration is disabled; skill extraction is handled at
+        # the frontend level, so no skills are produced here.
         extracted_skills = None
-
-        # Backend LAiSER integration is disabled. Skill extraction, if any, is
-        # now handled at the frontend level. Previous implementation (kept for
-        # reference, no longer executed):
-        #
-        # # Check if skill extraction is requested
-        # if request.enable_skill_extraction:
-        #     # Validate LAiSER service is initialized
-        #     if not skill_service.is_ready():
-        #         logger.error(f"Skill extraction requested but LAiSER service not initialized")
-        #         raise HTTPException(
-        #             status_code=503,
-        #             detail="Skill extraction service is not available. Service failed to initialize at startup. Check server logs for initialization errors."
-        #         )
-        #
-        #     logger.info(f"Skill extraction enabled for badge {badge_id}")
-        #     try:
-        #         skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
-        #
-        #         extracted_skills = skill_service.extract_skills(
-        #             text=skill_extraction_text,
-        #             top_k=settings.LAISER_TOP_K
-        #         )
-        #
-        #         logger.info(f"Extracted {len(extracted_skills)} skills for badge {badge_id}")
-        #
-        #     except Exception as e:
-        #         logger.warning(f"Skill extraction failed for badge {badge_id}: {e}")
-        #         extracted_skills = []
-        # else:
-        #     logger.debug("Skill extraction disabled")
 
         # ============================================================================
         # SECTION 4: Build Response
@@ -326,7 +249,7 @@ async def generate_badge(request: GenerateBadgeRequest):
         # Add image only if generated
         if image_base64:
             achievement["image"] = {
-                "id": f"https://example.com/achievements/badge_{badge_id}/image",
+                "id": build_achievement_image_id(badge_id),
                 "image_base64": image_base64
             }
         
@@ -472,7 +395,11 @@ def format_streaming_response(data: Dict[str, Any]) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 def create_streaming_response(generator):
-    """Create a streaming response with proper headers"""
+    """Create a streaming response with proper headers.
+
+    CORS headers are intentionally not set here; the CORSMiddleware applies the
+    configured origin allowlist to streaming responses as well.
+    """
     return StreamingResponse(
         generator,
         media_type="text/plain",
@@ -480,9 +407,6 @@ def create_streaming_response(generator):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "Content-Type": "text/plain; charset=utf-8",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "*",
-            "Access-Control-Allow-Headers": "*"
         }
     )
 
@@ -713,86 +637,13 @@ Parameters:
                                     pass
                             else:
                                 logger.info(f"Image generation disabled for streaming badge {badge_id}")
-                            
-                            # ============================================================================
-                            # OLD IMAGE GENERATION CODE (Commented out - now handled by external service)
-                            # ============================================================================
-                            # img_config = request.image_generation.image_configuration
-                            # custom_colors = None
-                            # if img_config.primary_color or img_config.secondary_color:
-                            #     custom_colors = {}
-                            #     if img_config.primary_color:
-                            #         custom_colors["primary"] = img_config.primary_color
-                            #     if img_config.secondary_color:
-                            #         custom_colors["secondary"] = img_config.secondary_color
-                            # if not custom_colors and request.badge_configuration.institute_url:
-                            #     try:
-                            #         from app.services.web_color_scraper import scrape_institution_colors_async
-                            #         institution_colors = await scrape_institution_colors_async(request.badge_configuration.institute_url)
-                            #         custom_colors = institution_colors
-                            #     except Exception as color_error:
-                            #         logger.warning(f"Failed to scrape colors: {color_error}")
-                            # logo_bytes = None
-                            # if img_config.logo:
-                            #     try:
-                            #         import base64
-                            #         logo_bytes = base64.b64decode(img_config.logo)
-                            #     except Exception as e:
-                            #         logger.warning(f"Failed to decode logo: {e}")
-                            # if image_type == "icon_based":
-                            #     icon_suggestions_result = await get_icon_suggestions_for_badge(...)
-                            #     icon_name = icon_suggestions_result.get('suggested_icon', {}).get('name', 'trophy.png')
-                            #     image_base64, image_config = await generate_badge_with_icon(icon_name=icon_name, colors=custom_colors)
-                            # else:  # text_overlay
-                            #     optimized_text = await optimize_badge_text(...)
-                            #     image_base64, image_config = await generate_badge_with_text(...)
 
                             # ============================================================================
                             # SECTION 3: Skill Extraction (Disabled - handled by frontend)
                             # ============================================================================
+                            # Backend LAiSER integration is disabled; skill extraction is handled at
+                            # the frontend level, so no skills are produced here.
                             extracted_skills = None
-
-                            # Backend LAiSER integration is disabled. Skill extraction, if any, is
-                            # now handled at the frontend level. Previous implementation (kept for
-                            # reference, no longer executed):
-                            #
-                            # # Check if skill extraction is requested
-                            # if request.enable_skill_extraction:
-                            #     # Validate LAiSER service is initialized
-                            #     if not skill_service.is_ready():
-                            #         logger.error(
-                            #             f"Skill extraction requested but LAiSER service not initialized (streaming)"
-                            #         )
-                            #         error_chunk = {
-                            #             "type": "error",
-                            #             "content": "Skill extraction service is not available. Service failed to initialize at startup.",
-                            #             "error_code": "skill_extraction_not_ready",
-                            #             "solution": "Check server logs for LAiSER initialization errors",
-                            #             "badge_id": badge_id
-                            #         }
-                            #         yield format_streaming_response(error_chunk)
-                            #         return
-                            #
-                            #     logger.info(f"Skill extraction enabled for streaming badge {badge_id}")
-                            #     try:
-                            #         skill_extraction_text = f"{request.course_input}\n\nBadge: {validated.badge_name}\n{validated.badge_description}"
-                            #
-                            #         extracted_skills = skill_service.extract_skills(
-                            #             text=skill_extraction_text,
-                            #             top_k=settings.LAISER_TOP_K
-                            #         )
-                            #
-                            #         logger.info(
-                            #             f"Extracted {len(extracted_skills)} skills for streaming badge {badge_id}"
-                            #         )
-                            #
-                            #     except Exception as e:
-                            #         logger.warning(
-                            #             f"Skill extraction failed for streaming badge {badge_id}: {e}"
-                            #         )
-                            #         extracted_skills = []
-                            # else:
-                            #     logger.debug("Skill extraction disabled (streaming)")
 
                             # ============================================================================
                             # SECTION 4: Build Response
@@ -808,7 +659,7 @@ Parameters:
                             # Add image only if generated
                             if image_base64:
                                 achievement["image"] = {
-                                    "id": f"https://example.com/achievements/badge_{badge_id}/image",
+                                    "id": build_achievement_image_id(badge_id),
                                     "image_base64": image_base64
                                 }
                             
@@ -882,7 +733,7 @@ Parameters:
                                             "criteria": validated.criteria,
                                             "description": validated.badge_description,
                                             "image": {
-                                                "id": f"https://example.com/achievements/badge_{badge_id}/image",
+                                                "id": build_achievement_image_id(badge_id),
                                                 "image_base64": None
                                             },
                                             "name": validated.badge_name
@@ -943,13 +794,6 @@ Parameters:
         # Handle other errors
         log_response("Streaming badge suggestions generation", False, request_id)
         raise handle_error(e, "Streaming badge suggestions generation", request_id)
-    
-class BadgeRegenerateRequest(BaseModel):
-    """Request model for badge regeneration using custom instructions"""
-    custom_instructions: str  # e.g., "give badge name", "make it more concise", "focus on leadership"
-    institution: Optional[str] = None  # Optional: override institution from last badge
-
-    
 
 
 def get_badge_from_history(badge_id: str) -> Dict[str, Any]:
@@ -1087,56 +931,6 @@ async def regenerate_field(request: FieldRegenerateRequest):
             field=request.field_to_change,
             new_value=new_value
         )
-
-        # # Regenerate image if title or description changed
-        # if request.field_to_change in ["title", "description"]:
-        #     achievement = updated_badge.credentialSubject["achievement"]
-
-        #     # Choose random image type
-        #     image_type = random.choice(["text_overlay", "icon_based"])
-
-        #     if image_type == "icon_based":
-        #         icon_suggestions = await get_icon_suggestions_for_badge(
-        #             badge_name=achievement["name"],
-        #             badge_description=achievement["description"],
-        #             custom_instructions=request.custom_instructions or "",
-        #             top_k=3
-        #         )
-
-        #         image_config_wrapper = await generate_icon_image_config(
-        #             achievement["name"],
-        #             achievement["description"],
-        #             icon_suggestions,
-        #             request.institution or original_badge.get("institution", "")
-        #         )
-
-        #         image_config = image_config_wrapper.get("config", {})
-
-        #     else:  # text_overlay
-        #         optimized_text = await optimize_badge_text({
-        #             "badge_name": achievement["name"],
-        #             "badge_description": achievement["description"],
-        #             "institution": request.institution or original_badge.get("institution", "")
-        #         })
-
-        #         image_config_wrapper = await generate_text_image_config(
-        #             achievement["name"],
-        #             achievement["description"],
-        #             optimized_text,
-        #             request.institution or original_badge.get("institution", "")
-        #         )
-
-        #         image_config = image_config_wrapper.get("config", {})
-
-        #     # Generate new image
-        #     image_base64 = await generate_badge_image(image_config)
-
-        #     # Update badge with new image
-        #     updated_badge.credentialSubject["achievement"]["image"] = {
-        #         "id": f"https://example.com/achievements/badge_{updated_badge.badge_id}/image",
-        #         "image_base64": image_base64
-        #     }
-        #     updated_badge.imageConfig = image_config
 
         # Add metrics to updated badge
         updated_badge.metrics = metrics
@@ -1290,9 +1084,25 @@ async def proxy_badge_generate_with_logo(request: Request):
         filename = getattr(logo_file, 'filename', 'logo.png')
         content_type = getattr(logo_file, 'content_type', 'image/png')
 
+        # Validate logo content type and size before forwarding upstream.
+        normalized_content_type = (content_type or "").split(";", 1)[0].strip().lower()
+        if normalized_content_type not in ALLOWED_LOGO_CONTENT_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Unsupported logo content type "
+                    f"'{content_type}'. Allowed types: PNG, SVG, JPEG."
+                ),
+            )
+        if len(logo_content) > MAX_LOGO_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Logo exceeds the {MAX_LOGO_BYTES // (1024 * 1024)}MB size limit.",
+            )
+
         # Prepare multipart form data for httpx
         files = {
-            "logo": (filename, logo_content, content_type)
+            "logo": (filename, logo_content, normalized_content_type)
         }
         data = {
             "config": config_str

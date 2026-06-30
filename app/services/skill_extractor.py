@@ -1,17 +1,12 @@
 import logging
-import ssl
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
-# Production imports - LAiSER dependencies required
-import pandas as pd
-from laiser.skill_extractor import Skill_Extractor
-
-# Fix SSL certificate verification issues on macOS
-# NOTE: This disables SSL verification - use only for trusted sources like GitHub
-try:
-    ssl._create_default_https_context = ssl._create_unverified_context
-except Exception:
-    pass  # Ignore SSL setup errors
+# Heavy LAiSER dependencies (pandas, laiser, ...) are imported lazily inside the
+# methods that need them. This service is currently disabled (skill extraction is
+# handled by the frontend), so importing this module must stay cheap and must not
+# fail when those optional dependencies are absent.
+if TYPE_CHECKING:  # pragma: no cover - typing only, not imported at runtime
+    from laiser.skill_extractor import Skill_Extractor
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +23,7 @@ class SkillExtractionService:
     """
 
     def __init__(self):
-        self.extractor: Optional[Skill_Extractor] = None
+        self.extractor: Optional["Skill_Extractor"] = None
         self._initialized: bool = False
 
     async def initialize(self, ai_model_id: str, hf_token: str, use_gpu: bool = False):
@@ -51,6 +46,9 @@ class SkillExtractionService:
         logger.info("=" * 80)
 
         try:
+            # Imported lazily so the module stays importable without LAiSER installed.
+            from laiser.skill_extractor import Skill_Extractor
+
             self.extractor = Skill_Extractor(
                 AI_MODEL_ID=ai_model_id,
                 HF_TOKEN=hf_token,
@@ -96,8 +94,10 @@ class SkillExtractionService:
 
         try:
             import time
+            # Imported lazily so the module stays importable without pandas installed.
+            import pandas as pd
             start_time = time.time()
-            
+
             logger.info(f"🔍 Extracting top {top_k} skills from text (length: {len(text)} chars)")
 
             # Create DataFrame for LAiSER extractor
