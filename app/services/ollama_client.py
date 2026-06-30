@@ -1,7 +1,7 @@
 import httpx
 import logging
 import json
-import time
+import uuid
 from typing import Dict, Optional, AsyncGenerator, Any
 from fastapi import HTTPException
 from app.core.config import settings
@@ -57,7 +57,7 @@ class OllamaClient:
         }
 
         timeout = httpx.Timeout(300.0)
-        request_id = f"req_{hash(content)}_{int(time.time())}"
+        request_id = f"req_{uuid.uuid4().hex}"
         accumulated_response = ""
 
         try:
@@ -154,7 +154,7 @@ class OllamaClient:
         }
 
         timeout = httpx.Timeout(300.0)
-        request_id = f"req_{hash(prompt)}_{int(time.time())}"
+        request_id = f"req_{uuid.uuid4().hex}"
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:

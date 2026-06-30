@@ -192,10 +192,10 @@ class ImageGeneration(BaseModel):
     image_configuration: Optional[ImageConfiguration] = Field(default=None, description="Image configuration settings (only required when enable_image_generation is true)")
 
 class GenerateBadgeRequest(BaseModel):
-    course_input: str = Field(..., description="Course content or description to generate badge from")
+    course_input: str = Field(..., max_length=20000, description="Course content or description to generate badge from")
     badge_configuration: BadgeConfiguration
     enable_skill_extraction: bool = Field(default=False, description="Enable LAiSER skill extraction")
-    context_length: Optional[int] = Field(default=None, description="Context length override (tokens)")
+    context_length: Optional[int] = Field(default=None, ge=256, le=32768, description="Context length override (tokens)")
     image_generation: ImageGeneration
 
 # Legacy model for backward compatibility with internal services

@@ -1,8 +1,13 @@
 
 from pydantic_settings import BaseSettings  # Changed from pydantic import BaseSettings
-from pydantic import Field
+from pydantic import Field, model_validator
 from typing import Dict, List
 import os
+
+def _parse_cors_origins(raw: str) -> List[str]:
+    """Parse a comma-separated list of allowed CORS origins into a clean list."""
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
 
 class Settings(BaseSettings):
     # Ollama Configuration
@@ -10,6 +15,17 @@ class Settings(BaseSettings):
     MODEL_NAME: str = os.getenv("MODEL_NAME", "phi4-chat:latest")
     # Badge Image Service Configuration
     BADGE_IMAGE_SERVICE_URL: str = os.getenv("BADGE_IMAGE_SERVICE_URL", "http://localhost:3001")
+
+    # CORS Configuration
+    # Comma-separated allowlist of origins permitted to call the API.
+    # Explicit origins are required because allow_credentials=True is incompatible
+    # with a wildcard ("*") origin.
+    CORS_ORIGINS_STR: str = os.getenv("CORS_ORIGINS_STR", "http://localhost:3000")
+    CORS_ORIGINS: List[str] = Field(default_factory=list)
+
+    # Open Badge v3 Issuer Configuration
+    # Base URL used to build the achievement image `id` (an IRI in the OBv3 spec).
+    BADGE_ISSUER_URL: str = os.getenv("BADGE_ISSUER_URL", "http://localhost:8000")
 
     # Logging Configuration
     ENABLE_LOG_BASE64_DATA: bool = False
@@ -84,5 +100,11 @@ class Settings(BaseSettings):
     }
 
     model_config = {"env_file": ".env"}  # Updated for Pydantic v2
+
+    @model_validator(mode="after")
+    def _derive_cors_origins(self) -> "Settings":
+        """Derive the parsed CORS allowlist from the comma-separated env string."""
+        self.CORS_ORIGINS = _parse_cors_origins(self.CORS_ORIGINS_STR)
+        return self
 
 settings = Settings()

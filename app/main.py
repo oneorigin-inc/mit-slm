@@ -17,6 +17,19 @@ import copy
 
 logger = logging.getLogger(__name__)
 
+# Header names whose values must never appear in logs (compared case-insensitively).
+SENSITIVE_HEADERS = frozenset({"authorization", "cookie", "x-api-key", "set-cookie"})
+REDACTED_VALUE = "[REDACTED]"
+
+
+def _redact_sensitive_headers(headers: dict) -> dict:
+    """Return a copy of the headers dict with sensitive values redacted."""
+    return {
+        key: (REDACTED_VALUE if key.lower() in SENSITIVE_HEADERS else value)
+        for key, value in headers.items()
+    }
+
+
 # ============================================================================
 # Request Logging Middleware (Production-Ready Implementation)
 # ============================================================================
@@ -73,9 +86,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                     if not body_sent:
                         body_sent = True
                         return {"type": "http.request", "body": cached_body, "more_body": False}
-                    # After body is sent, wait for disconnect
-                    while True:
-                        await asyncio.sleep(3600)  # Wait indefinitely for disconnect
+                    # Body already delivered: signal disconnect instead of blocking.
+                    # Returning a sleeping coroutine here would leak one task per request.
+                    return {"type": "http.disconnect"}
 
                 # Replace request's receive with cached version (proper ASGI pattern)
                 request._receive = receive
@@ -90,8 +103,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             # For file uploads, just log that it's a multipart request
             body = "<multipart/form-data - file upload>"
         
-        # Convert headers to dict for logging (exclude sensitive data if needed)
-        headers_dict = dict(request.headers)
+        # Convert headers to dict for logging, redacting sensitive values
+        headers_dict = _redact_sensitive_headers(dict(request.headers))
         
         # Convert query params to dict
         query_dict = dict(request.query_params)
@@ -181,21 +194,8 @@ async def lifespan(app: FastAPI):
     # Startup
     await preload_model()
 
-    # LAiSER backend initialization disabled.
-    # Skill extraction is now handled at the frontend level.
-    # Previous implementation (kept for reference, no longer executed):
-    # try:
-    #     logger.info("Initializing LAiSER skill extractor...")
-    #     await skill_service.initialize(
-    #         ai_model_id=settings.LAISER_MODEL_ID,
-    #         hf_token=settings.LAISER_HF_TOKEN,
-    #         use_gpu=settings.LAISER_USE_GPU
-    #     )
-    #     logger.info("LAiSER initialization complete.")
-    # except Exception as e:
-    #     logger.warning(
-    #         f"LAiSER initialization failed: {e}. Skill extraction will be unavailable for all requests."
-    #     )
+    # LAiSER backend initialization is disabled; skill extraction is handled at
+    # the frontend level, so there is no skill-service startup step here.
 
     yield
     # Shutdown (if needed)
@@ -210,9 +210,12 @@ app.include_router(badges.router, prefix="/api/v1")
 app.include_router(health.router)
 
 # Add CORS middleware
+# Origins are an explicit allowlist driven by CORS_ORIGINS_STR (comma-separated env var).
+# An explicit allowlist is required: a wildcard origin is invalid together with
+# allow_credentials=True per the CORS spec.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust as needed for production
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
